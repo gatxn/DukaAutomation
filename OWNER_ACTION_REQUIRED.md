@@ -15,7 +15,10 @@ Fly.io, or similar).
 **Environment:** Production (and ideally a separate staging instance first).
 **Env vars affected:** `DJANGO_ALLOWED_HOSTS`, everything else in `.env.example` ultimately runs
 on whatever host you provision.
-**After you have it:** Follow `PRODUCTION_DEPLOYMENT.md`.
+**After you have it:** Follow `PRODUCTION_DEPLOYMENT.md`, or `RENDER_DEPLOY.md` if deploying to
+Render specifically (a ready-to-use `render.yaml` blueprint is committed at the repo root — note
+Netlify does not work for this app: it has no way to run a persistent WSGI process or the
+continuously-running background worker this app needs, and no persistent database storage).
 
 ## 2. A managed PostgreSQL database
 
