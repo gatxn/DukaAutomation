@@ -20,19 +20,28 @@ Render specifically (a ready-to-use `render.yaml` blueprint is committed at the 
 Netlify does not work for this app: it has no way to run a persistent WSGI process or the
 continuously-running background worker this app needs, and no persistent database storage).
 
-## 2. A managed PostgreSQL database
+## 2. A managed PostgreSQL database and object storage (Supabase)
 
-**What:** A provisioned PostgreSQL instance (managed, e.g. via your hosting provider, is strongly
-recommended over self-hosting Postgres).
-**Why:** SQLite is not safe for concurrent production writes (Prototype Audit AR5). The
-application code is already Postgres-ready (Phase 6 of this transformation) — this is purely an
-infrastructure step.
-**Where:** Your hosting provider's managed Postgres offering, or any Postgres host.
+**What:** A Supabase project (free tier is enough to start) — its Postgres database for
+`DATABASE_URL`, and its S3-compatible Storage bucket for product photos, so both live on the same
+account. You create the project, bucket, and keys; nothing here can be done on your behalf since it
+requires a Supabase account and its dashboard.
+**Why:** SQLite is not safe for concurrent production writes (Prototype Audit AR5), and Render's own
+disk does not reliably persist uploaded photos (confirmed directly against a live deploy) — a
+Postgres instance and object-storage bucket are both required, and Supabase's free tier covers both
+without paying for Render's disk add-on. The application code is already wired for both (Phase 6 of
+this transformation, plus the `django-storages` integration) — this is purely an infrastructure/
+account step.
+**Where:** supabase.com — full walkthrough (creating the project, connection string, bucket, and
+S3 keys) is in `RENDER_DEPLOY.md` → "Setting up Supabase".
 **Environment:** Staging and production.
-**Env var:** `DATABASE_URL=postgres://user:password@host:5432/dbname`
-**After you have it:** Set `DATABASE_URL`, run `python manage.py migrate`, run the test suite
-against it once to confirm, then run one real backup→restore drill (see `DISASTER_RECOVERY.md`)
-before trusting it with real data.
+**Env vars:** `DATABASE_URL` (Supabase's Transaction/pooled connection string), plus
+`SUPABASE_S3_ENDPOINT`, `SUPABASE_S3_ACCESS_KEY_ID`, `SUPABASE_S3_SECRET_ACCESS_KEY`,
+`SUPABASE_S3_BUCKET`, `SUPABASE_PUBLIC_URL`.
+**After you have it:** Set all six env vars in your hosting provider's dashboard (never in a
+committed file), run `python manage.py migrate`, run the test suite against it once to confirm,
+upload a test product photo and confirm it's still reachable after a redeploy, then run one real
+backup→restore drill (see `DISASTER_RECOVERY.md`) before trusting it with real data.
 
 ## 3. A domain name and TLS
 

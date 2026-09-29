@@ -22,14 +22,23 @@ securely — losing it makes every merchant's saved credentials unreadable).
 ## 3. Configure PostgreSQL
 
 Set `DATABASE_URL` (see `.env.example`). The app auto-switches engines based on this — no code
-change needed (Phase 6 of this transformation made this Postgres-ready).
+change needed (Phase 6 of this transformation made this Postgres-ready). This project uses
+Supabase's managed Postgres (its free-tier connection string, in Transaction/pooled mode — see
+`RENDER_DEPLOY.md` → "Setting up Supabase") rather than Render's own database, since it doesn't
+expire and pairs with the same project's Storage bucket for media (item 4 below).
 
 ## 4. Configure media storage
 
 `MEDIA_ROOT` defaults to local disk, which does not survive a redeploy to a fresh
-filesystem/container. For any host that can be replaced/recreated, configure object storage (S3 or
-S3-compatible) instead — this requires `django-storages` (not currently a dependency; add it when
-you reach this step, since it's meaningless without a real object storage account to point it at).
+filesystem/container. `django-storages` + `boto3` are already dependencies, and `settings.py`
+switches `default` file storage to S3-compatible object storage automatically whenever
+`SUPABASE_S3_ENDPOINT` is set (see the block right after `MEDIA_ROOT` in `duka/settings.py`) — unset,
+it falls back to local disk unchanged, so local dev needs no configuration. This project uses
+Supabase Storage as the S3-compatible provider; see `RENDER_DEPLOY.md` → "Setting up Supabase" for
+exactly how to create the bucket and access keys, and what env vars to set
+(`SUPABASE_S3_ENDPOINT`, `SUPABASE_S3_ACCESS_KEY_ID`, `SUPABASE_S3_SECRET_ACCESS_KEY`,
+`SUPABASE_S3_BUCKET`, `SUPABASE_PUBLIC_URL`). Any other S3-compatible provider works the same way —
+just point these vars at it instead.
 
 ## 5. Configure secrets
 

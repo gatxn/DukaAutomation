@@ -1,9 +1,3 @@
-databases:
-  - name: duka-db
-    plan: free
-    databaseName: duka
-    user: duka
-
 services:
   - type: web
     name: duka-web
@@ -22,12 +16,23 @@ services:
         generateValue: true
       - key: CREDENTIAL_ENCRYPTION_KEY
         generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
-          name: duka-db
-          property: connectionString
       - key: AI_MODEL
         value: "gpt-4.1-mini"
+      # Set these in the Render dashboard (Environment tab) — never committed here.
+      # Supabase project → Settings → Database → Connection string (URI, "Transaction" pooler mode).
+      - key: DATABASE_URL
+        sync: false
+      # Supabase project → Settings → Storage / S3 Connection.
+      - key: SUPABASE_S3_ENDPOINT
+        sync: false
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: SUPABASE_S3_BUCKET
+        sync: false
+      - key: SUPABASE_PUBLIC_URL
+        sync: false
 
   - type: worker
     name: duka-worker
@@ -51,6 +56,14 @@ services:
           name: duka-web
           envVarKey: CREDENTIAL_ENCRYPTION_KEY
       - key: DATABASE_URL
-        fromDatabase:
-          name: duka-db
-          property: connectionString
+        sync: false
+      - key: SUPABASE_S3_ENDPOINT
+        sync: false
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: SUPABASE_S3_BUCKET
+        sync: false
+      - key: SUPABASE_PUBLIC_URL
+        sync: false
