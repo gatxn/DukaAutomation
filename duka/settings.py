@@ -68,9 +68,13 @@ if os.getenv('SUPABASE_S3_ENDPOINT'):
     AWS_DEFAULT_ACL = None
     AWS_QUERYSTRING_AUTH = False
     AWS_S3_FILE_OVERWRITE = False
-    # Supabase serves public-bucket objects from its own REST path, not boto3's default
-    # endpoint+bucket+key URL shape, so the public read URL is built explicitly here.
-    MEDIA_URL = os.getenv('SUPABASE_PUBLIC_URL', '').rstrip('/') + f'/storage/v1/object/public/{AWS_STORAGE_BUCKET_NAME}/'
+    # django-storages builds file URLs from AWS_S3_CUSTOM_DOMAIN, not from Django's global
+    # MEDIA_URL — without this, S3Storage.url() falls back to the S3 API endpoint itself
+    # (AWS_S3_ENDPOINT_URL), which requires a signed request and 403s on a plain GET. Supabase
+    # serves public-bucket objects from a separate REST path, so that's what's set here.
+    _supabase_host = os.getenv('SUPABASE_PUBLIC_URL', '').removeprefix('https://').removeprefix('http://').rstrip('/')
+    AWS_S3_CUSTOM_DOMAIN = f'{_supabase_host}/storage/v1/object/public/{AWS_STORAGE_BUCKET_NAME}'
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 CREDENTIAL_ENCRYPTION_KEY = os.getenv('CREDENTIAL_ENCRYPTION_KEY', '')
