@@ -37,5 +37,8 @@ urlpatterns = [
     path('webhooks/<str:provider>/<uuid:webhook_id>/', connections.webhook),
     path('api/conversations/<int:contact_id>/<str:action>/', views.conversation_action),
 ]
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL,document_root=settings.MEDIA_ROOT)
+# Always serve /media/ (product photos), not just in DEBUG: this app has no other mechanism
+# configured yet (no CDN/reverse-proxy static handling, no object storage) to serve uploaded
+# files in production. This is the documented stopgap in PRODUCTION_DEPLOYMENT.md item 4 —
+# move to S3-compatible storage once the app needs to run on more than one instance.
+urlpatterns += static(settings.MEDIA_URL,document_root=settings.MEDIA_ROOT)

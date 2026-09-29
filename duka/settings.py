@@ -43,9 +43,14 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# The manifest-hashed storage requires `collectstatic` to have already run (it reads
+# staticfiles.json); that's true for a real deployment (see PRODUCTION_DEPLOYMENT.md) but not
+# for local `manage.py test` or CI, which don't run collectstatic first. Gate on DATABASE_URL —
+# the same "is this a real deployment" signal the DATABASES block above already uses — so tests
+# keep working locally and in CI without requiring an extra build step.
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage' if os.getenv('DATABASE_URL') else 'django.contrib.staticfiles.storage.StaticFilesStorage'},
 }
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
