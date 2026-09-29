@@ -1,0 +1,8 @@
+[tool.ruff]
+line-length = 500
+target-version = "py313"
+
+[tool.ruff.lint]
+# Catch real bugs (syntax errors, undefined names, unused imports) without imposing a
+# repo-wide reformat/import-sort on the codebase's existing terse one-liner style.
+select = ["E9", "F"]

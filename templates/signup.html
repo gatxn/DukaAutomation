@@ -1,0 +1,5 @@
+{% extends 'auth_base.html' %}
+{% block title %}Create your shop | Duka{% endblock %}
+{% block content %}
+<span class="eyebrow">LET’S BUILD YOUR BUSINESS</span><h1>Your shop starts here.</h1><p class="auth-intro">Create an account to explore your own sample catalog, conversations and orders.</p><form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary">Create sample shop <span aria-hidden="true">→</span></button></form><p class="auth-switch">Already have an account? <a href="{% url 'login' %}">Sign in</a></p><p class="auth-disclosure">Your changes are saved to your account.<br>Live WhatsApp and payment connections are not enabled yet.</p>
+{% endblock %}

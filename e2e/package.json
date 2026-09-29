@@ -1,0 +1,14 @@
+{
+  "name": "duka-e2e",
+  "version": "1.0.0",
+  "description": "Thin Playwright smoke layer for Duka — requires the Django dev server running separately.",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

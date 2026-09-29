@@ -1,0 +1,5 @@
+{% extends 'auth_base.html' %}
+{% block title %}Too many attempts | Duka{% endblock %}
+{% block content %}
+<span class="eyebrow">ACCOUNT SECURITY</span><h1>Too many sign-in attempts.</h1><p class="auth-intro">For your account's safety, sign-in is paused for about {{ cooloff_time }} after {{ failure_limit }} failed attempts. Try again later, or reset your password.</p><p class="auth-switch"><a href="{% url 'password_reset' %}">Reset your password</a></p>
+{% endblock %}

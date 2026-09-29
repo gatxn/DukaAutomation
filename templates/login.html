@@ -1,0 +1,5 @@
+{% extends 'auth_base.html' %}
+{% block title %}Welcome back | Duka{% endblock %}
+{% block content %}
+<span class="eyebrow">YOUR MERCHANT WORKSPACE</span><h1>Welcome back.</h1><p class="auth-intro">Sign in to pick up where your customers left off.</p><form method="post">{% csrf_token %}{{ form.as_p }}<input type="hidden" name="next" value="{{ next }}"><button class="primary">Sign in to your shop <span aria-hidden="true">→</span></button></form><p class="auth-switch">New to Duka? <a href="{% url 'signup' %}">Create an account</a> · <a href="{% url 'password_reset' %}">Forgot password?</a></p><p class="auth-disclosure">You’re entering a demo workspace.<br>No live WhatsApp messages or payments are sent.</p>
+{% endblock %}

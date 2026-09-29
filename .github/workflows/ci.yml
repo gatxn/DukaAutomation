@@ -1,0 +1,47 @@
+# CI for the Duka Django app. This repo is not yet connected to git/GitHub in this environment
+# (see OWNER_ACTION_REQUIRED.md) — this workflow is ready to run the moment it's pushed to
+# https://github.com/gatxn/DukaAutomation.git or any other GitHub remote; it does nothing until then.
+# Assumes manage.py sits at the repo root (i.e. git was initialized inside this project folder
+# directly, not a parent folder) — adjust `working-directory` below if that's not how it's set up.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check shop duka
+
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+
+      - name: Run tests
+        run: python manage.py test
+        env:
+          DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+
+      - name: Deployment checks
+        run: python manage.py check --deploy
+        env:
+          DJANGO_DEBUG: '0'
+          DJANGO_SECRET_KEY: ci-only-not-a-real-secret-but-long-enough-to-pass-the-check-xx
+          CREDENTIAL_ENCRYPTION_KEY: 'Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4PQ=='

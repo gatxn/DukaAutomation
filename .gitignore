@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3
+.local-secret
+.env
+staticfiles/
+media/
+_backups/
+backups/
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
