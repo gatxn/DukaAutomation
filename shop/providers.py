@@ -1,5 +1,6 @@
 """Provider contracts. No keys or raw provider errors are logged or returned."""
 import json
+from urllib.parse import quote
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 from django.conf import settings
@@ -38,14 +39,6 @@ def call(provider, path, token, payload=None, key=None, raw=False):
         headers['Idempotency-Key'] = str(key)
     return _request(provider, bases[provider]+path, headers, payload)
 
-def call_apikey(provider, base, path, api_key, payload):
-    """For providers that authenticate with a raw `apikey` header instead of Bearer (Africa's
-    Talking), which call() can't express without breaking its Ghala/Snippe/OpenAI callers."""
-    if not api_key:
-        raise ProviderError(f'{provider} is not configured yet.')
-    headers = {'apikey':api_key,'Content-Type':'application/json','Accept':'application/json'}
-    return _request(provider, base+path, headers, payload)
-
 def email_otp(destination, code):
     if not settings.RESEND_API_KEY:
         raise ProviderError('Email delivery is not configured yet.')
@@ -55,11 +48,24 @@ def email_otp(destination, code):
     call('Resend','/emails',settings.RESEND_API_KEY,payload,raw=True)
 
 def whatsapp_otp(phone, code):
-    if not (settings.AFRICASTALKING_API_KEY and settings.AFRICASTALKING_USERNAME and settings.AFRICASTALKING_WA_NUMBER and settings.AFRICASTALKING_WA_TEMPLATE_ID):
+    """Uses the platform's own Ghala team (GHALA_API_KEY, a team-level key from Ghala's
+    Settings -> Developer -> API Keys), not any merchant's per-shop Connection.ghala_token —
+    a brand-new signup has no shop yet to hold one. Requires a WhatsApp number connected to that
+    team and an approved "Authentication" template (GHALA_OTP_TEMPLATE_NAME); free-text messages
+    to someone who hasn't messaged first are rejected by WhatsApp/Meta regardless of provider."""
+    if not (settings.GHALA_API_KEY and settings.GHALA_OTP_TEMPLATE_NAME):
         raise ProviderError('WhatsApp delivery is not configured yet.')
-    payload = {'username':settings.AFRICASTALKING_USERNAME,'waNumber':settings.AFRICASTALKING_WA_NUMBER,'phoneNumber':phone,
-        'body':{'templateId':settings.AFRICASTALKING_WA_TEMPLATE_ID,'bodyValues':[code]}}
-    call_apikey("Africa's Talking",'https://chat.africastalking.com','/whatsapp/message/send',settings.AFRICASTALKING_API_KEY,payload)
+    found = call('Ghala', f'/api/v1/inbox/contacts?q={quote(phone)}&limit=1', settings.GHALA_API_KEY, raw=True)
+    items = found.get('items') or []
+    contact_id = items[0]['id'] if items and items[0].get('phone_number') == phone else None
+    if not contact_id:
+        contact = call('Ghala', '/api/v1/inbox/contacts', settings.GHALA_API_KEY, {'phone_number':phone}, raw=True)
+        contact_id = contact.get('id')
+    if not contact_id:
+        raise ProviderError('Ghala did not return a contact ID.')
+    payload = {'template_name':settings.GHALA_OTP_TEMPLATE_NAME, 'language':settings.GHALA_OTP_TEMPLATE_LANGUAGE,
+        'components':[{'type':'body','parameters':[{'type':'text','text':code}]}]}
+    call('Ghala', f'/api/v1/inbox/contacts/{contact_id}/messages/template', settings.GHALA_API_KEY, payload, raw=True)
 
 def send_otp(channel, destination, code):
     (email_otp if channel == 'email' else whatsapp_otp)(destination, code)

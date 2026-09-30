@@ -31,20 +31,23 @@ photos that survives redeploys.
    `https://xxxxx.supabase.co`). This is `SUPABASE_PUBLIC_URL` below — it's how the app builds the
    public link to each uploaded photo.
 
-## Setting up OTP delivery (Resend + Africa's Talking)
+## Setting up OTP delivery (Resend + a platform Ghala team)
 
 Signup and password reset both verify the account via a one-time code, sent by email (Resend) or
-WhatsApp (Africa's Talking) — the user picks which. Leaving either unconfigured doesn't break the
-app; that channel just shows a clean "not configured yet" error until you set it up. Full detail
-in `OWNER_ACTION_REQUIRED.md` items 7 and 7b — short version:
+WhatsApp (Ghala) — the user picks which. Leaving either unconfigured doesn't break the app; that
+channel just shows a clean "not configured yet" error until you set it up. Full detail in
+`OWNER_ACTION_REQUIRED.md` items 7 and 7b — short version:
 
 1. **Resend** (resend.com): verify a sending domain, generate an API key. `RESEND_FROM_EMAIL` must
    use that verified domain, or real recipients (anyone outside your own test addresses) won't
    receive anything.
-2. **Africa's Talking** (africastalking.com): create an account, connect a WhatsApp Business
-   number, and submit a WhatsApp "Authentication" template for Meta's approval — this last step is
-   slow (real review time, out of your control) and blocks WhatsApp OTP from working until it
-   clears, even once every env var below is set correctly.
+2. **A second, platform-level Ghala team** (v2.ghala.io) — **not** the per-merchant Ghala
+   connection any individual shop owner sets up in their own Settings screen (step 7 below).
+   This is a Ghala account *you* own, purely to send OTP codes. Create it, connect a WhatsApp
+   Business number, mint a team API key (Settings → Developer → API Keys), and submit a WhatsApp
+   "Authentication" template for Meta's approval — this last step is slow (real review time, out
+   of your control) and blocks WhatsApp OTP from working until it clears, even once every env var
+   below is set correctly.
 
 ## Deploying to Render
 
@@ -59,9 +62,10 @@ in `OWNER_ACTION_REQUIRED.md` items 7 and 7b — short version:
    - `SUPABASE_S3_BUCKET` — `duka-media` (or whatever you named the bucket in step 3).
    - `SUPABASE_PUBLIC_URL` — from step 5 above.
    Both `duka-web` and `duka-worker` need all six; the blueprint lists them on both services.
-   - `RESEND_API_KEY` and `AFRICASTALKING_USERNAME`/`AFRICASTALKING_API_KEY`/
-     `AFRICASTALKING_WA_NUMBER`/`AFRICASTALKING_WA_TEMPLATE_ID` — only `duka-web` needs these
-     (OTP sends happen inline in the web request, not in the worker).
+   - `RESEND_API_KEY` and `GHALA_API_KEY`/`GHALA_OTP_TEMPLATE_NAME` — only `duka-web` needs these
+     (OTP sends happen inline in the web request, not in the worker). `GHALA_API_KEY` here is the
+     platform's own team key from step 2 above — a different credential from the per-shop Ghala
+     token any merchant enters later in their own Settings screen (step 7 below).
 4. Click **Apply**. Render builds and deploys both services. The build command runs `pip install`,
    `collectstatic`, and `migrate` automatically against your Supabase database — no manual migration
    step needed on first deploy.

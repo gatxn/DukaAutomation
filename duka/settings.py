@@ -80,16 +80,15 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 CREDENTIAL_ENCRYPTION_KEY = os.getenv('CREDENTIAL_ENCRYPTION_KEY', '')
 AI_MODEL = os.getenv('AI_MODEL', 'gpt-4.1-mini')
 # Platform-level OTP delivery for signup and password reset (see shop/providers.py:
-# email_otp/whatsapp_otp). Unlike Ghala/Snippe/OpenAI these are not per-shop credentials —
-# there's one Duka-owned Resend/Africa's Talking account, since a brand-new signup has no shop
-# yet to hold a per-merchant credential. Left unset, both raise ProviderError immediately rather
-# than silently no-op — see OWNER_ACTION_REQUIRED.md for account setup.
+# email_otp/whatsapp_otp). Unlike a merchant's own Connection.ghala_token, GHALA_API_KEY is a
+# separate Ghala team the platform itself owns — a brand-new signup has no shop yet to hold a
+# per-merchant credential. Left unset, both raise ProviderError immediately rather than silently
+# no-op — see OWNER_ACTION_REQUIRED.md for account setup.
 RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
 RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'Duka <no-reply@duka.example.com>')
-AFRICASTALKING_USERNAME = os.getenv('AFRICASTALKING_USERNAME', '')
-AFRICASTALKING_API_KEY = os.getenv('AFRICASTALKING_API_KEY', '')
-AFRICASTALKING_WA_NUMBER = os.getenv('AFRICASTALKING_WA_NUMBER', '')
-AFRICASTALKING_WA_TEMPLATE_ID = os.getenv('AFRICASTALKING_WA_TEMPLATE_ID', '')
+GHALA_API_KEY = os.getenv('GHALA_API_KEY', '')
+GHALA_OTP_TEMPLATE_NAME = os.getenv('GHALA_OTP_TEMPLATE_NAME', '')
+GHALA_OTP_TEMPLATE_LANGUAGE = os.getenv('GHALA_OTP_TEMPLATE_LANGUAGE', 'en')
 OTP_TTL_SECONDS = int(os.getenv('OTP_TTL_SECONDS', '300'))
 LOGGING = {
     'version': 1,

@@ -107,22 +107,29 @@ sender only delivers to your own verified test addresses.
 **Environment:** Staging/production.
 **Env vars:** `RESEND_API_KEY`, `RESEND_FROM_EMAIL`.
 
-## 7b. An Africa's Talking account + an approved WhatsApp template (WhatsApp OTP)
+## 7b. A platform-level Ghala team + an approved WhatsApp template (WhatsApp OTP)
 
-**What:** An Africa's Talking account (africastalking.com), a WhatsApp Business number
-connected through it, and — this is the slow part — a Meta-approved "Authentication" message
-template submitted through Africa's Talking's WhatsApp product.
-**Why:** WhatsApp Business messaging to someone who hasn't messaged your business first (exactly
-what an OTP is) requires a pre-approved template, not free text; the code already sends via
-`templateId` for this reason (`shop/providers.py: whatsapp_otp`), but the template itself has to
-exist and be approved before any code you set here does anything. This is entirely outside
-engineering's control and can take real time — start it early if WhatsApp OTP matters for launch.
-Without `AFRICASTALKING_API_KEY`/`AFRICASTALKING_WA_NUMBER`/`AFRICASTALKING_WA_TEMPLATE_ID` set,
-choosing WhatsApp fails immediately with a clean "WhatsApp delivery is not configured yet." error.
-**Where:** africastalking.com.
+**What:** A **separate Ghala team you (the platform operator) own** — not any individual
+merchant's shop — with a WhatsApp Business number connected to it, a team API key minted from
+Settings → Developer → API Keys, and — this is the slow part — a Meta-approved "Authentication"
+message template submitted through that team's Ghala dashboard.
+**Why:** This can't reuse a merchant's own Ghala connection (`Connection.ghala_token` in
+`shop/models.py`): that credential is created per-shop, after a shop already exists, and a
+brand-new signup has no shop yet to hold one — so the platform needs its own account instead,
+the same way it has its own Resend account for email OTP. Separately, WhatsApp Business messaging
+to someone who hasn't messaged your business first (exactly what an OTP is) requires a
+pre-approved template regardless of provider; the code sends via `template_name` for this reason
+(`shop/providers.py: whatsapp_otp`), but the template itself has to exist and be approved before
+any code you set here does anything. Template approval is entirely outside engineering's control
+and can take real time — start it early if WhatsApp OTP matters for launch. Without
+`GHALA_API_KEY`/`GHALA_OTP_TEMPLATE_NAME` set, choosing WhatsApp fails immediately with a clean
+"WhatsApp delivery is not configured yet." error.
+**Where:** v2.ghala.io — sign up, create a team, connect a WhatsApp number (Embedded Signup),
+mint an API key, then submit an Authentication template and wait for it to clear Meta review.
 **Environment:** Staging/production.
-**Env vars:** `AFRICASTALKING_USERNAME`, `AFRICASTALKING_API_KEY`, `AFRICASTALKING_WA_NUMBER`,
-`AFRICASTALKING_WA_TEMPLATE_ID`.
+**Env vars:** `GHALA_API_KEY`, `GHALA_OTP_TEMPLATE_NAME` (the approved template's name),
+`GHALA_OTP_TEMPLATE_LANGUAGE` (defaults to `en` — match whatever language you submitted the
+template in).
 
 ## 8. A Sentry (or GlitchTip) account (optional but recommended)
 

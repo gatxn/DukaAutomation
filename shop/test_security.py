@@ -2,7 +2,7 @@ import json
 from datetime import timedelta
 from unittest.mock import patch
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from .models import Shop, Membership, ROLE_OWNER, UserProfile, OtpCode
 
@@ -126,8 +126,8 @@ class SignupEmailTests(TestCase):
         self.assertFalse(User.objects.filter(username='expiredmerchant').exists())
 
     def test_signup_whatsapp_channel_without_provider_configured_shows_clean_error(self):
-        # No AFRICASTALKING_* settings in the test environment: whatsapp_otp() should raise
-        # ProviderError, surfaced as a form error, never a 500 or a created account.
+        # No GHALA_* settings in the test environment: whatsapp_otp() should raise ProviderError,
+        # surfaced as a form error, never a 500 or a created account.
         response = self.client.post('/signup/', {'username':'nowhatsapp','password1':'A-unique-demo-pass-996!','password2':'A-unique-demo-pass-996!','channel':'whatsapp','phone':'+255712345678'})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'not configured')
@@ -141,3 +141,36 @@ class SignupEmailTests(TestCase):
         self.assertEqual(verify.status_code, 200)
         self.assertContains(verify, 'just taken')
         self.assertEqual(User.objects.filter(username='racedmerchant').count(), 1)  # only the racer's row
+
+@override_settings(GHALA_API_KEY='team-key', GHALA_OTP_TEMPLATE_NAME='otp_verification', GHALA_OTP_TEMPLATE_LANGUAGE='en')
+class GhalaWhatsappOtpTests(TestCase):
+    def test_reuses_an_existing_contact_instead_of_creating_a_duplicate(self):
+        from shop.providers import whatsapp_otp
+        responses = [
+            {'items': [{'id': 'contact-1', 'phone_number': '+255712345678'}]},  # search hit
+            {'id': 'msg-1', 'status': 'SENT'},  # template send
+        ]
+        with patch('shop.providers._request', side_effect=responses) as mock_request:
+            whatsapp_otp('+255712345678', '123456')
+        self.assertEqual(mock_request.call_count, 2)
+        send_url = mock_request.call_args_list[1].args[1]
+        self.assertIn('/inbox/contacts/contact-1/messages/template', send_url)
+
+    def test_creates_a_contact_when_none_exists(self):
+        from shop.providers import whatsapp_otp
+        responses = [
+            {'items': []},  # search miss
+            {'id': 'contact-2'},  # contact creation
+            {'id': 'msg-2', 'status': 'SENT'},  # template send
+        ]
+        with patch('shop.providers._request', side_effect=responses) as mock_request:
+            whatsapp_otp('+255799999999', '654321')
+        self.assertEqual(mock_request.call_count, 3)
+        send_url = mock_request.call_args_list[2].args[1]
+        self.assertIn('/inbox/contacts/contact-2/messages/template', send_url)
+
+    def test_raises_a_clean_error_when_ghala_never_returns_a_contact_id(self):
+        from shop.providers import whatsapp_otp, ProviderError
+        with patch('shop.providers._request', side_effect=[{'items': []}, {}]):
+            with self.assertRaises(ProviderError):
+                whatsapp_otp('+255700000000', '111111')

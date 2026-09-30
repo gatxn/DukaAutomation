@@ -38,16 +38,15 @@ services:
         sync: false
       - key: RESEND_FROM_EMAIL
         value: "Duka <no-reply@duka.example.com>"
-      # Africa's Talking dashboard → Settings → API Key, plus your connected WhatsApp number
-      # and its Meta-approved authentication template ID (see OWNER_ACTION_REQUIRED.md item 7b).
-      - key: AFRICASTALKING_USERNAME
+      # A Ghala team API key the platform itself owns (Settings → Developer → API Keys) — not
+      # any merchant's per-shop Connection.ghala_token — plus the name/language of its
+      # Meta-approved authentication template (see OWNER_ACTION_REQUIRED.md item 7b).
+      - key: GHALA_API_KEY
         sync: false
-      - key: AFRICASTALKING_API_KEY
+      - key: GHALA_OTP_TEMPLATE_NAME
         sync: false
-      - key: AFRICASTALKING_WA_NUMBER
-        sync: false
-      - key: AFRICASTALKING_WA_TEMPLATE_ID
-        sync: false
+      - key: GHALA_OTP_TEMPLATE_LANGUAGE
+        value: "en"
 
   - type: worker
     name: duka-worker
