@@ -79,13 +79,18 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 7 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 CREDENTIAL_ENCRYPTION_KEY = os.getenv('CREDENTIAL_ENCRYPTION_KEY', '')
 AI_MODEL = os.getenv('AI_MODEL', 'gpt-4.1-mini')
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST', '')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', '1') == '1'
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'no-reply@duka.example.com')
+# Platform-level OTP delivery for signup and password reset (see shop/providers.py:
+# email_otp/whatsapp_otp). Unlike Ghala/Snippe/OpenAI these are not per-shop credentials —
+# there's one Duka-owned Resend/Africa's Talking account, since a brand-new signup has no shop
+# yet to hold a per-merchant credential. Left unset, both raise ProviderError immediately rather
+# than silently no-op — see OWNER_ACTION_REQUIRED.md for account setup.
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'Duka <no-reply@duka.example.com>')
+AFRICASTALKING_USERNAME = os.getenv('AFRICASTALKING_USERNAME', '')
+AFRICASTALKING_API_KEY = os.getenv('AFRICASTALKING_API_KEY', '')
+AFRICASTALKING_WA_NUMBER = os.getenv('AFRICASTALKING_WA_NUMBER', '')
+AFRICASTALKING_WA_TEMPLATE_ID = os.getenv('AFRICASTALKING_WA_TEMPLATE_ID', '')
+OTP_TTL_SECONDS = int(os.getenv('OTP_TTL_SECONDS', '300'))
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

@@ -1,21 +1,65 @@
 import json
+import secrets
+from datetime import timedelta
 from functools import wraps
+from django.conf import settings
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.db import connection as db_connection, transaction
+from django.db import IntegrityError, connection as db_connection, transaction
 from django.db.models import F
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
-from .forms import ProductForm, ShopForm, SignupForm
-from .models import Shop, Product, Conversation, Message, Order, Connection, Membership, ROLE_OWNER, ROLE_MANAGER, ROLE_AGENT
+from .forms import ProductForm, ShopForm, SignupForm, OtpVerifyForm, OtpSetPasswordForm
+from .models import (Shop, Product, Conversation, Message, Order, Connection, Membership, UserProfile, OtpCode,
+    ROLE_OWNER, ROLE_MANAGER, ROLE_AGENT, OTP_PURPOSE_SIGNUP, OTP_PURPOSE_RESET, OTP_CHANNEL_EMAIL, OTP_CHANNEL_WHATSAPP, OTP_CHANNEL_CHOICES)
 from .permissions import shop_for_user, role_for
+from .providers import send_otp, ProviderError
 from .audit import log_action
 from .seed import seed_demo
+
+OTP_MAX_ATTEMPTS = 5
+OTP_RESEND_COOLDOWN_SECONDS = 60
+OTP_MAX_PER_HOUR = 5
+
+def _generate_otp():
+    return f'{secrets.randbelow(1000000):06d}'
+
+def _resend_otp(otp):
+    """Shared by signup_verify and password_reset_verify's 'resend' action."""
+    if timezone.now() - otp.last_sent_at < timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS):
+        return 'Please wait a bit before requesting another code.'
+    recent = OtpCode.objects.filter(destination=otp.destination, purpose=otp.purpose,
+        created_at__gte=timezone.now()-timedelta(hours=1)).count()
+    if recent >= OTP_MAX_PER_HOUR:
+        return 'Too many codes requested. Try again later.'
+    code = _generate_otp()
+    try:
+        send_otp(otp.channel, otp.destination, code)
+    except ProviderError as exc:
+        return str(exc)
+    otp.code_hash = make_password(code)
+    otp.last_sent_at = timezone.now()
+    otp.expires_at = timezone.now() + timedelta(seconds=settings.OTP_TTL_SECONDS)
+    otp.attempts = 0
+    otp.save(update_fields=['code_hash','last_sent_at','expires_at','attempts'])
+    return None
+
+def _check_otp(otp, code):
+    """Returns an error string, or None on success. Increments attempts as a side effect."""
+    if otp.attempts >= OTP_MAX_ATTEMPTS:
+        return 'Too many incorrect attempts. Request a new code.'
+    if not check_password(code, otp.code_hash):
+        otp.attempts += 1
+        otp.save(update_fields=['attempts'])
+        return 'That code is incorrect.'
+    return None
 
 def api(view):
     @wraps(view)
@@ -38,14 +82,135 @@ def api(view):
 def signup(request):
     form = SignupForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
-        with transaction.atomic():
-            user = form.save()
-            shop = Shop.objects.create(owner=user, name='Mlimani Shop')
-            Membership.objects.create(shop=shop, user=user, role=ROLE_OWNER)
-            seed_demo(shop)
-        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-        return redirect('workspace')
+        channel = form.cleaned_data['channel']
+        destination = form.cleaned_data['email'] if channel == OTP_CHANNEL_EMAIL else form.cleaned_data['phone']
+        pending_user = form.save(commit=False)  # hashes the password without touching the DB
+        code = _generate_otp()
+        try:
+            send_otp(channel, destination, code)
+        except ProviderError as exc:
+            form.add_error(None, str(exc))
+            return render(request, 'signup.html', {'form':form})
+        otp = OtpCode.objects.create(purpose=OTP_PURPOSE_SIGNUP, channel=channel, destination=destination,
+            code_hash=make_password(code), pending_username=pending_user.username,
+            pending_password_hash=pending_user.password,
+            expires_at=timezone.now()+timedelta(seconds=settings.OTP_TTL_SECONDS))
+        log_action(request, 'otp_requested', result='ok', purpose=OTP_PURPOSE_SIGNUP, channel=channel)
+        return redirect('signup_verify', token=otp.token)
     return render(request, 'signup.html', {'form':form})
+
+def signup_verify(request, token):
+    otp = get_object_or_404(OtpCode, token=token, purpose=OTP_PURPOSE_SIGNUP, consumed_at__isnull=True)
+    expired = otp.expires_at < timezone.now()
+    resend_error = None
+    form = OtpVerifyForm(request.POST or None)
+    if request.method == 'POST' and 'resend' in request.POST:
+        resend_error = _resend_otp(otp)
+        expired = False
+        form = OtpVerifyForm()
+    elif request.method == 'POST' and not expired and form.is_valid():
+        check_error = _check_otp(otp, form.cleaned_data['code'])
+        if check_error:
+            form.add_error(None, check_error)
+        else:
+            try:
+                with transaction.atomic():
+                    user = User(username=otp.pending_username, password=otp.pending_password_hash)
+                    if otp.channel == OTP_CHANNEL_EMAIL:
+                        user.email = otp.destination
+                    user.save()
+                    UserProfile.objects.create(user=user,
+                        phone=otp.destination if otp.channel == OTP_CHANNEL_WHATSAPP else '',
+                        phone_verified=otp.channel == OTP_CHANNEL_WHATSAPP,
+                        email_verified=otp.channel == OTP_CHANNEL_EMAIL)
+                    shop = Shop.objects.create(owner=user, name='Mlimani Shop')
+                    Membership.objects.create(shop=shop, user=user, role=ROLE_OWNER)
+                    seed_demo(shop)
+                    otp.consumed_at = timezone.now()
+                    otp.save(update_fields=['consumed_at'])
+            except IntegrityError:
+                form.add_error(None, 'That username was just taken. Go back and choose another.')
+            else:
+                log_action(request, 'signup_completed', shop=shop, actor=user, result='ok', channel=otp.channel)
+                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+                return redirect('workspace')
+    return render(request, 'signup_verify.html', {'form':form, 'otp':otp, 'expired':expired, 'resend_error':resend_error})
+
+def _available_channels(user):
+    """Only channels the account actually verified — at signup, or never (existing accounts
+    from before this feature shipped have no profile at all and offer nothing)."""
+    profile = getattr(user, 'profile', None)
+    channels = []
+    if not profile:
+        return channels
+    if user.email and profile.email_verified:
+        channels.append(OTP_CHANNEL_EMAIL)
+    if profile.phone and profile.phone_verified:
+        channels.append(OTP_CHANNEL_WHATSAPP)
+    return channels
+
+def password_reset_request(request):
+    username = ''
+    available_channels = []
+    checked_user = None
+    error = None
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        try:
+            checked_user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            checked_user = None
+        available_channels = _available_channels(checked_user) if checked_user else []
+        if 'channel' in request.POST:
+            channel = request.POST.get('channel')
+            if checked_user and channel in available_channels:
+                profile = checked_user.profile
+                destination = checked_user.email if channel == OTP_CHANNEL_EMAIL else profile.phone
+                code = _generate_otp()
+                try:
+                    send_otp(channel, destination, code)
+                except ProviderError as exc:
+                    error = str(exc)
+                else:
+                    otp = OtpCode.objects.create(purpose=OTP_PURPOSE_RESET, channel=channel, destination=destination,
+                        code_hash=make_password(code), user=checked_user,
+                        expires_at=timezone.now()+timedelta(seconds=settings.OTP_TTL_SECONDS))
+                    log_action(request, 'otp_requested', actor=checked_user, result='ok', purpose=OTP_PURPOSE_RESET, channel=channel)
+                    return redirect('password_reset_verify', token=otp.token)
+            else:
+                error = 'Choose one of the available options.'
+        elif not available_channels:
+            # Same message whether the account doesn't exist or has nothing verified yet —
+            # never confirm which one via a different response.
+            return render(request, 'password_reset_request.html', {'no_channels':True})
+    channel_labels = dict(OTP_CHANNEL_CHOICES)
+    return render(request, 'password_reset_request.html', {
+        'username':username, 'available_channels_display':[(c, channel_labels[c]) for c in available_channels],
+        'error':error, 'show_channels':bool(username),
+    })
+
+def password_reset_verify(request, token):
+    otp = get_object_or_404(OtpCode, token=token, purpose=OTP_PURPOSE_RESET, consumed_at__isnull=True)
+    expired = otp.expires_at < timezone.now()
+    resend_error = None
+    form = OtpSetPasswordForm(otp.user, request.POST or None) if not expired else None
+    if request.method == 'POST' and 'resend' in request.POST:
+        resend_error = _resend_otp(otp)
+        expired = False
+        form = OtpSetPasswordForm(otp.user)
+    elif form and request.method == 'POST' and form.is_valid():
+        check_error = _check_otp(otp, form.cleaned_data['code'])
+        if check_error:
+            form.add_error(None, check_error)
+        else:
+            otp.user.set_password(form.cleaned_data['new_password1'])
+            otp.user.save()
+            otp.consumed_at = timezone.now()
+            otp.save(update_fields=['consumed_at'])
+            log_action(request, 'password_reset_completed', actor=otp.user, result='ok')
+            login(request, otp.user, backend='django.contrib.auth.backends.ModelBackend')
+            return redirect('workspace')
+    return render(request, 'password_reset_verify.html', {'form':form, 'expired':expired, 'resend_error':resend_error})
 
 @login_required
 @ensure_csrf_cookie

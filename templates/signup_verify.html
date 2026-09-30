@@ -1,0 +1,13 @@
+{% extends 'auth_base.html' %}
+{% block title %}Verify your account | Duka{% endblock %}
+{% block content %}
+<span class="eyebrow">ALMOST THERE</span><h1>Enter your code.</h1>
+{% if expired %}
+<p class="auth-intro">This code has expired. <a href="{% url 'signup' %}">Start over</a> to get a new one.</p>
+{% else %}
+<p class="auth-intro">We sent a 6-digit code to your {{ otp.get_channel_display|lower }} ({{ otp.destination }}).</p>
+{% if resend_error %}<ul class="errorlist"><li>{{ resend_error }}</li></ul>{% endif %}
+<form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary">Verify and create shop <span aria-hidden="true">→</span></button></form>
+<form method="post" class="auth-switch">{% csrf_token %}<input type="hidden" name="resend" value="1"><button type="submit" class="secondary">Resend code</button></form>
+{% endif %}
+{% endblock %}

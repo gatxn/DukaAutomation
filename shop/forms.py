@@ -1,16 +1,46 @@
+import re
 from django import forms
-from django.contrib.auth.forms import UserCreationForm
-from .models import Product, Shop
+from django.contrib.auth.forms import UserCreationForm, SetPasswordForm
+from .models import Product, Shop, OTP_CHANNEL_CHOICES, OTP_CHANNEL_EMAIL, OTP_CHANNEL_WHATSAPP
 import io
 import uuid
 import warnings
 from PIL import Image, ImageOps, UnidentifiedImageError
 from django.core.files.base import ContentFile
 
+PHONE_RE = re.compile(r'\+[1-9]\d{7,14}')
+
 class SignupForm(UserCreationForm):
-    email = forms.EmailField(required=False, help_text='Optional, but needed if you ever need to reset your password.')
+    channel = forms.ChoiceField(choices=OTP_CHANNEL_CHOICES, widget=forms.RadioSelect, initial=OTP_CHANNEL_EMAIL,
+        help_text='Where should we send your verification code?')
+    email = forms.EmailField(required=False, help_text='Required if you choose email verification.')
+    phone = forms.CharField(required=False, help_text='Required if you choose WhatsApp verification, e.g. +255712345678.')
     class Meta(UserCreationForm.Meta):
-        fields = ('username', 'email')
+        fields = ('username', 'email', 'phone', 'channel')
+
+    def clean_phone(self):
+        phone = self.cleaned_data.get('phone', '').strip()
+        if phone and not PHONE_RE.fullmatch(phone):
+            raise forms.ValidationError('Enter a phone number in international format, e.g. +255712345678.')
+        return phone
+
+    def clean(self):
+        cleaned = super().clean()
+        channel = cleaned.get('channel')
+        if channel == OTP_CHANNEL_EMAIL and not cleaned.get('email'):
+            self.add_error('email', 'Enter an email address to receive your code there.')
+        if channel == OTP_CHANNEL_WHATSAPP and not cleaned.get('phone'):
+            self.add_error('phone', 'Enter a phone number to receive your code on WhatsApp.')
+        return cleaned
+
+class OtpVerifyForm(forms.Form):
+    code = forms.CharField(max_length=6, min_length=6, label='Verification code',
+        widget=forms.TextInput(attrs={'inputmode':'numeric','autocomplete':'one-time-code'}))
+
+class OtpSetPasswordForm(SetPasswordForm):
+    code = forms.CharField(max_length=6, min_length=6, label='Verification code',
+        widget=forms.TextInput(attrs={'inputmode':'numeric','autocomplete':'one-time-code'}))
+    field_order = ['code', 'new_password1', 'new_password2']
 
 class ProductForm(forms.ModelForm):
     price = forms.IntegerField(min_value=1, max_value=100000000)

@@ -1,9 +1,10 @@
-import re
 import json
+from datetime import timedelta
+from unittest.mock import patch
 from django.contrib.auth.models import User
-from django.core import mail
 from django.test import TestCase
-from .models import Shop, Membership, ROLE_OWNER
+from django.utils import timezone
+from .models import Shop, Membership, ROLE_OWNER, UserProfile, OtpCode
 
 class LoginThrottlingTests(TestCase):
     def setUp(self):
@@ -30,30 +31,27 @@ class PasswordResetTests(TestCase):
         shop = Shop.objects.create(owner=self.shop_owner)
         Membership.objects.create(shop=shop, user=self.shop_owner, role=ROLE_OWNER)
 
-    def test_reset_flow_requires_account_email_and_issues_a_working_link(self):
-        # No email on file yet: Django's PasswordResetForm silently finds no match (by design, to avoid
-        # leaking which usernames exist) — no mail is sent.
-        self.client.post('/password-reset/', {'email': 'nobody@example.com'})
-        self.assertEqual(len(mail.outbox), 0)
+    def test_reset_flow_requires_a_verified_channel_and_resets_the_password(self):
+        # No verified email/phone on file yet: the same generic message either way, so a
+        # nonexistent account and an unverified one are indistinguishable to the requester.
+        step1 = self.client.post('/password-reset/', {'username': 'reset-owner'})
+        self.assertContains(step1, 'a code was sent')
 
-        self.client.force_login(self.shop_owner)
-        set_email = self.client.post('/api/account/email/', data=json.dumps({'email': 'owner@example.com'}), content_type='application/json')
-        self.assertEqual(set_email.status_code, 200)
+        self.shop_owner.email = 'owner@example.com'
+        self.shop_owner.save()
+        UserProfile.objects.create(user=self.shop_owner, email_verified=True)
+
+        with patch('shop.views.send_otp') as mock_send:
+            step1 = self.client.post('/password-reset/', {'username': 'reset-owner'})
+            self.assertContains(step1, 'Choose where')
+            step2 = self.client.post('/password-reset/', {'username': 'reset-owner', 'channel': 'email'})
+        self.assertEqual(step2.status_code, 302)
+        code = mock_send.call_args.args[2]
+
+        verify = self.client.post(step2.url, {'code': code, 'new_password1': 'Brand-New-Passw0rd!456', 'new_password2': 'Brand-New-Passw0rd!456'})
+        self.assertEqual(verify.status_code, 302)
+
         self.client.logout()
-
-        self.client.post('/password-reset/', {'email': 'owner@example.com'})
-        self.assertEqual(len(mail.outbox), 1)
-        body = mail.outbox[0].body
-        match = re.search(r'/reset/[^\s]+/', body)
-        self.assertIsNotNone(match)
-        reset_path = match.group(0)
-
-        confirm_page = self.client.get(reset_path, follow=True)
-        self.assertEqual(confirm_page.status_code, 200)
-        set_url = confirm_page.redirect_chain[-1][0]
-        new_password = self.client.post(set_url, {'new_password1': 'Brand-New-Passw0rd!456', 'new_password2': 'Brand-New-Passw0rd!456'})
-        self.assertEqual(new_password.status_code, 302)
-
         relogin = self.client.post('/login/', {'username': 'reset-owner', 'password': 'Brand-New-Passw0rd!456'})
         self.assertEqual(relogin.status_code, 302)
 
@@ -70,12 +68,76 @@ class PasswordResetTests(TestCase):
         self.assertEqual(self.shop_owner.email, '')
 
 class SignupEmailTests(TestCase):
-    def test_signup_accepts_optional_email(self):
-        response = self.client.post('/signup/', {'username': 'emailmerchant', 'email': 'merchant@example.com', 'password1': 'A-unique-demo-pass-999!', 'password2': 'A-unique-demo-pass-999!'})
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(User.objects.get(username='emailmerchant').email, 'merchant@example.com')
+    def _signup(self, **fields):
+        data = {'username':'emailmerchant','password1':'A-unique-demo-pass-999!','password2':'A-unique-demo-pass-999!','channel':'email','email':'merchant@example.com'}
+        data.update(fields)
+        with patch('shop.views.send_otp') as mock_send:
+            response = self.client.post('/signup/', data)
+        return response, mock_send
 
-    def test_signup_still_works_without_email(self):
-        response = self.client.post('/signup/', {'username': 'noemailmerchant', 'password1': 'A-unique-demo-pass-998!', 'password2': 'A-unique-demo-pass-998!'})
+    def test_signup_via_email_channel_verifies_email(self):
+        response, mock_send = self._signup()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(User.objects.get(username='noemailmerchant').email, '')
+        code = mock_send.call_args.args[2]
+        verify = self.client.post(response.url, {'code': code})
+        self.assertEqual(verify.status_code, 302)
+        user = User.objects.get(username='emailmerchant')
+        self.assertEqual(user.email, 'merchant@example.com')
+        self.assertTrue(user.profile.email_verified)
+        self.assertFalse(user.profile.phone_verified)
+
+    def test_signup_via_whatsapp_channel_verifies_phone_not_email(self):
+        response, mock_send = self._signup(username='phonemerchant', channel='whatsapp', email='', phone='+255712345678')
+        self.assertEqual(response.status_code, 302)
+        code = mock_send.call_args.args[2]
+        verify = self.client.post(response.url, {'code': code})
+        self.assertEqual(verify.status_code, 302)
+        user = User.objects.get(username='phonemerchant')
+        self.assertEqual(user.email, '')
+        self.assertTrue(user.profile.phone_verified)
+        self.assertFalse(user.profile.email_verified)
+
+    def test_signup_requires_destination_matching_chosen_channel(self):
+        response = self.client.post('/signup/', {'username':'nodest','password1':'A-unique-demo-pass-997!','password2':'A-unique-demo-pass-997!','channel':'whatsapp','email':'','phone':''})
+        self.assertEqual(response.status_code, 200)  # re-rendered with a validation error, not redirected
+        self.assertFalse(User.objects.filter(username='nodest').exists())
+
+    def test_signup_rejects_wrong_code_and_locks_out_after_five_attempts(self):
+        response, mock_send = self._signup(username='lockoutmerchant')
+        for _ in range(5):
+            attempt = self.client.post(response.url, {'code': '000000'})
+            self.assertEqual(attempt.status_code, 200)
+        code = mock_send.call_args.args[2]
+        final = self.client.post(response.url, {'code': code})  # correct code, but attempts exhausted
+        self.assertEqual(final.status_code, 200)
+        self.assertFalse(User.objects.filter(username='lockoutmerchant').exists())
+
+    def test_signup_resend_respects_cooldown(self):
+        response, mock_send = self._signup(username='resendmerchant')
+        self.client.post(response.url, {'resend': '1'})
+        self.assertEqual(mock_send.call_count, 1)  # cooldown blocked the second send
+
+    def test_signup_expired_code_cannot_be_verified(self):
+        response, mock_send = self._signup(username='expiredmerchant')
+        code = mock_send.call_args.args[2]
+        OtpCode.objects.filter(pending_username='expiredmerchant').update(expires_at=timezone.now()-timedelta(seconds=1))
+        verify = self.client.post(response.url, {'code': code})
+        self.assertEqual(verify.status_code, 200)
+        self.assertFalse(User.objects.filter(username='expiredmerchant').exists())
+
+    def test_signup_whatsapp_channel_without_provider_configured_shows_clean_error(self):
+        # No AFRICASTALKING_* settings in the test environment: whatsapp_otp() should raise
+        # ProviderError, surfaced as a form error, never a 500 or a created account.
+        response = self.client.post('/signup/', {'username':'nowhatsapp','password1':'A-unique-demo-pass-996!','password2':'A-unique-demo-pass-996!','channel':'whatsapp','phone':'+255712345678'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'not configured')
+        self.assertFalse(User.objects.filter(username='nowhatsapp').exists())
+
+    def test_signup_verify_handles_username_taken_between_steps(self):
+        response, mock_send = self._signup(username='racedmerchant')
+        code = mock_send.call_args.args[2]
+        User.objects.create_user('racedmerchant', password='Someone-Else-Got-Here-First!1')
+        verify = self.client.post(response.url, {'code': code})
+        self.assertEqual(verify.status_code, 200)
+        self.assertContains(verify, 'just taken')
+        self.assertEqual(User.objects.filter(username='racedmerchant').count(), 1)  # only the racer's row

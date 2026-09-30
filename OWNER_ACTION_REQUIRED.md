@@ -94,16 +94,35 @@ every call fails with a clear `ProviderError` by design (A8) — there is no moc
 conversation" preview, which never creates real orders/messages regardless).
 **Where it's entered:** The signed-in Settings → Assistant screen.
 
-## 7. An SMTP provider (for password-reset emails)
+## 7. A Resend account (email OTP for signup + password reset)
 
-**What:** Real SMTP credentials (e.g. from SendGrid, Postmark, AWS SES, or your hosting
-provider's built-in mail service).
-**Why:** Password reset (added in Phase 4 of this transformation) sends real emails in
-production; the console backend used in dev just prints to stdout.
-**Where:** Any transactional-email provider.
-**Environment:** Production.
-**Env vars:** `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, `EMAIL_HOST`,
-`EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL`.
+**What:** A Resend account (resend.com) with a verified sending domain, and an API key.
+**Why:** Signup and password reset both send a one-time code by email as one of the two
+verification channels (the other is WhatsApp, item 7b below). Without `RESEND_API_KEY` set,
+choosing email fails immediately with a clean "Email delivery is not configured yet." error —
+by design, not a bug — rather than silently pretending to send.
+**Where:** resend.com. You'll need to verify a domain you control before `RESEND_FROM_EMAIL`
+(e.g. `Duka <no-reply@yourdomain.com>`) can send to arbitrary recipients — Resend's sandbox
+sender only delivers to your own verified test addresses.
+**Environment:** Staging/production.
+**Env vars:** `RESEND_API_KEY`, `RESEND_FROM_EMAIL`.
+
+## 7b. An Africa's Talking account + an approved WhatsApp template (WhatsApp OTP)
+
+**What:** An Africa's Talking account (africastalking.com), a WhatsApp Business number
+connected through it, and — this is the slow part — a Meta-approved "Authentication" message
+template submitted through Africa's Talking's WhatsApp product.
+**Why:** WhatsApp Business messaging to someone who hasn't messaged your business first (exactly
+what an OTP is) requires a pre-approved template, not free text; the code already sends via
+`templateId` for this reason (`shop/providers.py: whatsapp_otp`), but the template itself has to
+exist and be approved before any code you set here does anything. This is entirely outside
+engineering's control and can take real time — start it early if WhatsApp OTP matters for launch.
+Without `AFRICASTALKING_API_KEY`/`AFRICASTALKING_WA_NUMBER`/`AFRICASTALKING_WA_TEMPLATE_ID` set,
+choosing WhatsApp fails immediately with a clean "WhatsApp delivery is not configured yet." error.
+**Where:** africastalking.com.
+**Environment:** Staging/production.
+**Env vars:** `AFRICASTALKING_USERNAME`, `AFRICASTALKING_API_KEY`, `AFRICASTALKING_WA_NUMBER`,
+`AFRICASTALKING_WA_TEMPLATE_ID`.
 
 ## 8. A Sentry (or GlitchTip) account (optional but recommended)
 

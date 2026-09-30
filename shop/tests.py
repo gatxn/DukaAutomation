@@ -1,6 +1,7 @@
 import io
 import json
 import tempfile
+from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client, override_settings
@@ -86,7 +87,11 @@ class WorkspaceTests(TestCase):
 
     def test_signup_creates_private_sample_shop(self):
         self.client.logout()
-        response=self.client.post('/signup/',{'username':'newmerchant','password1':'A-unique-demo-pass-785!','password2':'A-unique-demo-pass-785!'})
+        with patch('shop.views.send_otp') as mock_send:
+            response=self.client.post('/signup/',{'username':'newmerchant','password1':'A-unique-demo-pass-785!','password2':'A-unique-demo-pass-785!','channel':'email','email':'newmerchant@example.com'})
         self.assertEqual(response.status_code,302)
+        code = mock_send.call_args.args[2]
+        verify=self.client.post(response.url,{'code':code})
+        self.assertEqual(verify.status_code,302)
         self.assertEqual(len(self.client.get('/api/state/').json()['products']),3)
         self.assertTrue(Shop.objects.filter(owner__username='newmerchant').exists())

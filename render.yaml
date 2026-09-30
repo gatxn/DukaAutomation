@@ -33,6 +33,21 @@ services:
         sync: false
       - key: SUPABASE_PUBLIC_URL
         sync: false
+      # Resend project → API Keys. Requires a verified sending domain to email real users.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: "Duka <no-reply@duka.example.com>"
+      # Africa's Talking dashboard → Settings → API Key, plus your connected WhatsApp number
+      # and its Meta-approved authentication template ID (see OWNER_ACTION_REQUIRED.md item 7b).
+      - key: AFRICASTALKING_USERNAME
+        sync: false
+      - key: AFRICASTALKING_API_KEY
+        sync: false
+      - key: AFRICASTALKING_WA_NUMBER
+        sync: false
+      - key: AFRICASTALKING_WA_TEMPLATE_ID
+        sync: false
 
   - type: worker
     name: duka-worker

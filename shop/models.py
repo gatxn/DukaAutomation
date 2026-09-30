@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from django.conf import settings
 from django.db import models
@@ -220,4 +221,40 @@ class Job(models.Model):
     error = models.CharField(max_length=500,blank=True)
     available_at = models.DateTimeField()
     locked_at = models.DateTimeField(null=True,blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class UserProfile(models.Model):
+    """Extends the stock auth.User with the extra contact details OTP verification needs,
+    without swapping AUTH_USER_MODEL this late with real production accounts already in place."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    phone = models.CharField(max_length=20, blank=True)
+    phone_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+
+def generate_otp_token():
+    return secrets.token_urlsafe(32)
+
+OTP_PURPOSE_SIGNUP = 'signup'
+OTP_PURPOSE_RESET = 'password_reset'
+OTP_PURPOSE_CHOICES = [(OTP_PURPOSE_SIGNUP,'Signup'), (OTP_PURPOSE_RESET,'Password reset')]
+OTP_CHANNEL_EMAIL = 'email'
+OTP_CHANNEL_WHATSAPP = 'whatsapp'
+OTP_CHANNEL_CHOICES = [(OTP_CHANNEL_EMAIL,'Email'), (OTP_CHANNEL_WHATSAPP,'WhatsApp')]
+
+class OtpCode(models.Model):
+    """A one-time code for either a pending signup or a password reset. Signup rows stage the
+    not-yet-created account (username + already-hashed password); reset rows point at `user`.
+    The plaintext code is never stored — only `code_hash`, checked via check_password()."""
+    token = models.CharField(max_length=43, unique=True, default=generate_otp_token, editable=False)
+    purpose = models.CharField(max_length=16, choices=OTP_PURPOSE_CHOICES)
+    channel = models.CharField(max_length=16, choices=OTP_CHANNEL_CHOICES)
+    destination = models.CharField(max_length=255)
+    code_hash = models.CharField(max_length=128)
+    pending_username = models.CharField(max_length=150, blank=True)
+    pending_password_hash = models.CharField(max_length=128, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
