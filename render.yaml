@@ -11,7 +11,7 @@ services:
       - key: DJANGO_DEBUG
         value: "0"
       - key: DJANGO_ALLOWED_HOSTS
-        value: ".onrender.com"
+        value: ".onrender.com,dukanibot.com,www.dukanibot.com"
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: CREDENTIAL_ENCRYPTION_KEY
