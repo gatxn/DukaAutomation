@@ -37,7 +37,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM_EMAIL
-        value: "Duka <no-reply@duka.example.com>"
+        value: "Duka <no-reply@mail.dukanibot.com>"
       # A Ghala team API key the platform itself owns (Settings → Developer → API Keys) — not
       # any merchant's per-shop Connection.ghala_token — plus the name/language of its
       # Meta-approved authentication template (see OWNER_ACTION_REQUIRED.md item 7b).
