@@ -14,6 +14,9 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 def _request(provider, url, headers, payload):
+    # Cloudflare-fronted APIs (Resend) 403 with error 1010 on urllib's default User-Agent
+    # before the credential is even checked, which looks like a bad key but isn't.
+    headers = {'User-Agent':'duka/1.0 (+https://dukanibot.com)', **headers}
     req = Request(url, data=json.dumps(payload).encode() if payload is not None else None, headers=headers)
     try:
         with build_opener(NoRedirect()).open(req, timeout=25) as response:

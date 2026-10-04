@@ -142,6 +142,20 @@ class SignupEmailTests(TestCase):
         self.assertContains(verify, 'just taken')
         self.assertEqual(User.objects.filter(username='racedmerchant').count(), 1)  # only the racer's row
 
+class ProviderUserAgentTests(TestCase):
+    def test_outbound_requests_never_use_urllibs_default_user_agent(self):
+        from shop.providers import _request
+        captured = {}
+        class FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return b'{}'
+        class FakeOpener:
+            def open(self, req, timeout): captured['ua'] = req.get_header('User-agent'); return FakeResponse()
+        with patch('shop.providers.build_opener', return_value=FakeOpener()):
+            _request('Resend', 'https://api.resend.com/emails', {'Authorization': 'Bearer x'}, {})
+        self.assertTrue(captured['ua'].startswith('duka/'))
+
 @override_settings(GHALA_API_KEY='team-key', GHALA_OTP_TEMPLATE_NAME='otp_verification', GHALA_OTP_TEMPLATE_LANGUAGE='en')
 class GhalaWhatsappOtpTests(TestCase):
     def test_reuses_an_existing_contact_instead_of_creating_a_duplicate(self):
