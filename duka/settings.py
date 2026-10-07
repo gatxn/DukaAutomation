@@ -93,10 +93,20 @@ WHATSAPP_PHONE_NUMBER_ID = os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')
 WHATSAPP_OTP_TEMPLATE_NAME = os.getenv('WHATSAPP_OTP_TEMPLATE_NAME', '')
 WHATSAPP_OTP_TEMPLATE_LANGUAGE = os.getenv('WHATSAPP_OTP_TEMPLATE_LANGUAGE', 'en')
 WHATSAPP_GRAPH_VERSION = os.getenv('WHATSAPP_GRAPH_VERSION', 'v24.0')
+# Africa's Talking SMS OTP. Username 'sandbox' routes to their simulator (no real delivery).
+AFRICASTALKING_USERNAME = os.getenv('AFRICASTALKING_USERNAME', '')
+AFRICASTALKING_API_KEY = os.getenv('AFRICASTALKING_API_KEY', '')
+AFRICASTALKING_SENDER_ID = os.getenv('AFRICASTALKING_SENDER_ID', '')
 GHALA_API_KEY = os.getenv('GHALA_API_KEY', '')
 GHALA_OTP_TEMPLATE_NAME = os.getenv('GHALA_OTP_TEMPLATE_NAME', '')
 GHALA_OTP_TEMPLATE_LANGUAGE = os.getenv('GHALA_OTP_TEMPLATE_LANGUAGE', 'en')
 OTP_TTL_SECONDS = int(os.getenv('OTP_TTL_SECONDS', '300'))
+# Inbound WhatsApp (Meta Cloud API): one webhook for the whole platform, verified with the app's secret.
+META_APP_SECRET = os.getenv('META_APP_SECRET', '')
+META_WEBHOOK_VERIFY_TOKEN = os.getenv('META_WEBHOOK_VERIFY_TOKEN', '')
+# Process incoming-message jobs on a background thread of the web process. Only for hosts with no
+# separate worker (e.g. Render's free plan); with a real `process_jobs` worker leave this off.
+INLINE_JOB_PROCESSING = os.getenv('INLINE_JOB_PROCESSING', '0') == '1'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

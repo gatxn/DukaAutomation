@@ -18,7 +18,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 from .forms import ProductForm, ShopForm, SignupForm, OtpVerifyForm, OtpSetPasswordForm
 from .models import (Shop, Product, Conversation, Message, Order, Connection, Membership, UserProfile, OtpCode,
-    ROLE_OWNER, ROLE_MANAGER, ROLE_AGENT, OTP_PURPOSE_SIGNUP, OTP_PURPOSE_RESET, OTP_CHANNEL_EMAIL, OTP_CHANNEL_WHATSAPP, OTP_CHANNEL_CHOICES)
+    ROLE_OWNER, ROLE_MANAGER, ROLE_AGENT, OTP_PURPOSE_SIGNUP, OTP_PURPOSE_RESET, OTP_CHANNEL_EMAIL, OTP_PHONE_CHANNELS, OTP_CHANNEL_CHOICES)
 from .permissions import shop_for_user, role_for
 from .providers import send_otp, ProviderError
 from .audit import log_action
@@ -120,8 +120,8 @@ def signup_verify(request, token):
                         user.email = otp.destination
                     user.save()
                     UserProfile.objects.create(user=user,
-                        phone=otp.destination if otp.channel == OTP_CHANNEL_WHATSAPP else '',
-                        phone_verified=otp.channel == OTP_CHANNEL_WHATSAPP,
+                        phone=otp.destination if otp.channel in OTP_PHONE_CHANNELS else '',
+                        phone_verified=otp.channel in OTP_PHONE_CHANNELS,
                         email_verified=otp.channel == OTP_CHANNEL_EMAIL)
                     shop = Shop.objects.create(owner=user, name='Mlimani Shop')
                     Membership.objects.create(shop=shop, user=user, role=ROLE_OWNER)
@@ -146,7 +146,8 @@ def _available_channels(user):
     if user.email and profile.email_verified:
         channels.append(OTP_CHANNEL_EMAIL)
     if profile.phone and profile.phone_verified:
-        channels.append(OTP_CHANNEL_WHATSAPP)
+        # The number was proven at signup, so any phone channel can reach its owner.
+        channels.extend(OTP_PHONE_CHANNELS)
     return channels
 
 def password_reset_request(request):

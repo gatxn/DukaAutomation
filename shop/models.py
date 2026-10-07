@@ -199,6 +199,16 @@ class Connection(models.Model):
     ghala_auto_reply_disabled = models.BooleanField(default=False)
     model = models.CharField(max_length=80,default='gpt-4.1-mini')
     worker_heartbeat = models.DateTimeField(null=True,blank=True)
+    # Meta WhatsApp Cloud API, connected directly with no middleman. Verified against Meta when
+    # saved, so one shop cannot claim another shop's number ID and receive its customers' messages.
+    meta_token = models.TextField(blank=True)
+    meta_phone_number_id = models.CharField(max_length=40,blank=True)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['meta_phone_number_id'],condition=~Q(meta_phone_number_id=''),name='unique_meta_phone_number_id')]
+
+    @property
+    def uses_meta(self):
+        return bool(self.meta_token and self.meta_phone_number_id)
 
 class WebhookEvent(models.Model):
     shop = models.ForeignKey(Shop,on_delete=models.CASCADE)
@@ -239,7 +249,9 @@ OTP_PURPOSE_RESET = 'password_reset'
 OTP_PURPOSE_CHOICES = [(OTP_PURPOSE_SIGNUP,'Signup'), (OTP_PURPOSE_RESET,'Password reset')]
 OTP_CHANNEL_EMAIL = 'email'
 OTP_CHANNEL_WHATSAPP = 'whatsapp'
-OTP_CHANNEL_CHOICES = [(OTP_CHANNEL_EMAIL,'Email'), (OTP_CHANNEL_WHATSAPP,'WhatsApp')]
+OTP_CHANNEL_SMS = 'sms'
+OTP_CHANNEL_CHOICES = [(OTP_CHANNEL_EMAIL,'Email'), (OTP_CHANNEL_WHATSAPP,'WhatsApp'), (OTP_CHANNEL_SMS,'SMS')]
+OTP_PHONE_CHANNELS = (OTP_CHANNEL_WHATSAPP, OTP_CHANNEL_SMS)
 
 class OtpCode(models.Model):
     """A one-time code for either a pending signup or a password reset. Signup rows stage the

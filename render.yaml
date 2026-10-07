@@ -47,6 +47,23 @@ services:
         sync: false
       - key: WHATSAPP_OTP_TEMPLATE_LANGUAGE
         value: "en"
+      # Africa's Talking SMS OTP (username 'sandbox' = simulator, no real delivery).
+      - key: AFRICASTALKING_USERNAME
+        sync: false
+      - key: AFRICASTALKING_API_KEY
+        sync: false
+      - key: AFRICASTALKING_SENDER_ID
+        sync: false
+      # Inbound WhatsApp via Meta: the app's secret (App settings -> Basic) verifies webhook posts, and
+      # the verify token is any random string you also paste into Meta's webhook configuration.
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_WEBHOOK_VERIFY_TOKEN
+        sync: false
+      # No duka-worker exists on the free plan, so the web process runs queued jobs itself.
+      # Turn this off once a real worker is running.
+      - key: INLINE_JOB_PROCESSING
+        value: "1"
       # A Ghala team API key the platform itself owns (Settings → Developer → API Keys) — not
       # any merchant's per-shop Connection.ghala_token — plus the name/language of its
       # Meta-approved authentication template (see OWNER_ACTION_REQUIRED.md item 7b).

@@ -1,12 +1,13 @@
 import re
 from datetime import datetime, timezone as dt_timezone
 from urllib.parse import quote, urlsplit
+from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.core.exceptions import ValidationError
-from .models import Conversation, Message, Product, Order, Connection, WebhookEvent
+from .models import Conversation, Message, Product, Order, Connection, WebhookEvent, Job
 from .providers import call, sales_reply, ProviderError
 
 def https_url(value):
@@ -84,9 +85,32 @@ def receive(event,connection):
             raise ValueError()
     except (ValueError,OverflowError,OSError):
         raise ProviderError('Ghala timestamp must map to Unix seconds or an ISO-8601 date with timezone.') from None
+    _store_inbound(connection,phone,text,external,sent,values.get('name'))
+
+def receive_meta(event,connection):
+    """A text message delivered by Meta's WhatsApp Cloud API webhook (shape: entry[].changes[].value.messages[]).
+    The webhook view stores just the one message plus the sender's profile name on the event."""
+    message=event.payload.get('message')
+    if not isinstance(message,dict) or message.get('type')!='text':
+        return # Images, voice notes, reactions etc. are retained but not answered automatically.
+    phone=str(message.get('from','')).lstrip('+')
+    body=message.get('text')
+    text=body.get('body') if isinstance(body,dict) else None
+    external=message.get('id')
+    if not re.fullmatch(r'[1-9]\d{7,14}',phone) or not isinstance(text,str) or not 1<=len(text)<=10000 or not isinstance(external,str) or not 1<=len(external)<=255:
+        raise ProviderError('Unsupported WhatsApp message: only incoming text is handled automatically.')
+    try:
+        sent=datetime.fromtimestamp(int(message.get('timestamp')),tz=dt_timezone.utc)
+        if sent>timezone.now()+timezone.timedelta(minutes=5):
+            raise ValueError()
+    except (ValueError,TypeError,OverflowError,OSError):
+        raise ProviderError('WhatsApp message has an invalid timestamp.') from None
+    _store_inbound(connection,phone,text,external,sent,event.payload.get('name'))
+
+def _store_inbound(connection,phone,text,external,sent,name):
     from .connections import enqueue
     with transaction.atomic():
-        conversation,_=Conversation.objects.get_or_create(shop=connection.shop,phone=phone,defaults={'name':str(values.get('name') or phone)[:80],'preview':text[:200],'is_demo':False})
+        conversation,_=Conversation.objects.get_or_create(shop=connection.shop,phone=phone,defaults={'name':str(name or phone)[:80],'preview':text[:200],'is_demo':False})
         message,created=Message.objects.get_or_create(conversation=conversation,external_id=external,defaults={'direction':'in','body':text,'delivery_status':'received'})
         if created and (not conversation.last_inbound_at or sent>=conversation.last_inbound_at):
             conversation.last_inbound_at=sent
@@ -98,11 +122,16 @@ def receive(event,connection):
 def quote_text(product,quantity,address,delivery):
     return f'{quantity} × {product.name}\nTZS {product.price*quantity:,} + delivery TZS {delivery:,}\nTotal / Jumla: TZS {product.price*quantity+delivery:,}\nDelivery / Mahali: {address}\nReply CONFIRM or THIBITISHA to place this order, or tell us what to change.'
 
+def replies_ready(connection):
+    # Ghala also answers customers itself unless its native auto-replies are off; the direct Meta
+    # connection has no second agent to conflict with.
+    return connection.uses_meta or connection.ghala_auto_reply_disabled
+
 def agent_job(job,connection):
     conversation=Conversation.objects.get(id=job.payload['conversation_id'],shop=job.shop)
     message=Message.objects.get(id=job.payload['message_id'],conversation=conversation,direction='in')
     latest=conversation.messages.filter(direction='in').order_by('-id').first()
-    if conversation.human or not connection.agent_enabled or not connection.ghala_auto_reply_disabled or not latest or latest.id!=message.id:
+    if conversation.human or not connection.agent_enabled or not replies_ready(connection) or not latest or latest.id!=message.id:
         return
     if not conversation.last_inbound_at or (timezone.now()-conversation.last_inbound_at).total_seconds()>=23*3600:
         raise ProviderError('The WhatsApp reply window has ended. Use an approved template in Ghala.')
@@ -157,7 +186,7 @@ def agent_job(job,connection):
     # A human taking over or a newer message cancels a stale generated answer.
     conversation.refresh_from_db()
     connection.refresh_from_db()
-    if not connection.agent_enabled or not connection.ghala_auto_reply_disabled or (conversation.human and not job.result.get('handoff')) or conversation.messages.filter(direction='in',id__gt=message.id).exists():
+    if not connection.agent_enabled or not replies_ready(connection) or (conversation.human and not job.result.get('handoff')) or conversation.messages.filter(direction='in',id__gt=message.id).exists():
         return
     send(job,connection,{'conversation_id':conversation.id,'text':job.result['text'],'agent':True})
     if job.result.get('quote'):
@@ -172,6 +201,15 @@ def send(job,connection,payload):
     conversation=Conversation.objects.get(id=payload['conversation_id'],shop=job.shop,is_demo=False)
     if not conversation.last_inbound_at or (timezone.now()-conversation.last_inbound_at).total_seconds()>=24*3600:
         raise ProviderError('The WhatsApp 24-hour reply window has ended. Use an approved template in Ghala.')
+    if connection.uses_meta:
+        body={'messaging_product':'whatsapp','recipient_type':'individual','to':conversation.phone,'type':'text','text':{'body':payload['text'],'preview_url':False}}
+        if payload.get('media_url'):
+            body={'messaging_product':'whatsapp','recipient_type':'individual','to':conversation.phone,'type':'image','image':{'link':payload['media_url'],'caption':payload['text'][:1024]}}
+        result=call('Meta',f'/{settings.WHATSAPP_GRAPH_VERSION}/{connection.meta_phone_number_id}/messages',connection.meta_token,body,key=job.key)
+        if not result.get('messages'):
+            raise ProviderError('WhatsApp did not confirm message acceptance. Retry with the same queued job.')
+        Message.objects.get_or_create(conversation=conversation,external_id='duka-'+job.key,defaults={'direction':'out','body':payload['text'],'media_url':payload.get('media_url',''),'delivery_status':'accepted'})
+        return
     body={'to':conversation.phone,'type':'text','text':payload['text']}
     if payload.get('media_url'):
         body={'to':conversation.phone,'type':'image','media_url':payload['media_url'],'media_caption':payload['text']}
@@ -203,6 +241,8 @@ def process(job):
         event=WebhookEvent.objects.get(id=job.payload['event_id'],shop=job.shop)
         if event.provider=='ghala':
             receive(event,connection)
+        elif event.provider=='meta':
+            receive_meta(event,connection)
         else:
             verify_payment(event,connection)
     elif job.kind=='agent':
@@ -211,3 +251,15 @@ def process(job):
         send(job,connection,job.payload)
     else:
         raise ProviderError('Unknown queued job type.')
+
+def run_job(job):
+    """Runs one claimed job and records its outcome. Returns an error string, or None on success."""
+    try:
+        process(job)
+    except Exception as exc:
+        # Never log raw provider payloads, customer messages, or secrets.
+        error=str(exc) if isinstance(exc,ProviderError) else 'Processing failed. Check configuration and retry. Technical error type: '+type(exc).__name__
+        Job.objects.filter(id=job.id).update(status='failed',error=error[:500],locked_at=None)
+        return error[:500]
+    Job.objects.filter(id=job.id).update(status='done',error='',locked_at=None)
+    return None

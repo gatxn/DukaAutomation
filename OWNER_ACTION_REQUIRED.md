@@ -151,6 +151,34 @@ mint an API key, then submit an Authentication template and wait for it to clear
 `GHALA_OTP_TEMPLATE_LANGUAGE` (defaults to `en` — match whatever language you submitted the
 template in).
 
+## 7c. Africa's Talking account (SMS OTP, no Meta needed)
+
+**What:** A third signup/reset channel by SMS, built so verification does not depend on WhatsApp.
+**Why:** Meta restricts new WhatsApp accounts until the business is verified; SMS works today.
+**Steps (yours):** create an Africa's Talking account, top up the wallet, and copy your username and
+an API key. Start with username `sandbox` to test with their simulator (no real SMS is delivered).
+A registered sender ID is optional; without one the provider's shared sender is used.
+**Env vars (set in Render yourself, never in chat):** `AFRICASTALKING_USERNAME`,
+`AFRICASTALKING_API_KEY`, and optionally `AFRICASTALKING_SENDER_ID`.
+**Not yet verified:** unit-tested against mocks only; send one real SMS to your own number first.
+
+## 7d. Inbound WhatsApp and the AI assistant over Meta directly
+
+**What:** Customer messages to your WhatsApp number reach the AI assistant, which replies through
+the Cloud API (`POST /webhooks/meta/`). No Ghala account is needed.
+**Needs (all yours, after the number is live):**
+1. Meta app → Basic settings → copy the **App secret** into Render as `META_APP_SECRET`.
+2. Pick any random string as `META_WEBHOOK_VERIFY_TOKEN` in Render, then in Meta → WhatsApp →
+   Configuration set the callback URL to `https://dukanibot.com/webhooks/meta/`, enter the same
+   token, verify, and subscribe to the **messages** field.
+3. In Duka → Settings → WhatsApp Cloud API, enter the **Phone number ID** and permanent token. Duka
+   checks them against Meta before saving. In Assistant, add your OpenAI key and enable replies.
+**Worker:** `INLINE_JOB_PROCESSING=1` (already set in `render.yaml`) makes the web process run the
+queued jobs, because the free plan has no worker. A restart mid-reply leaves a job failed or stuck;
+Settings shows it and its Retry button resends. Use a real `process_jobs` worker before real volume.
+**Not yet verified:** the webhook shape, signature and send format follow Meta's documentation and
+are unit-tested with mocks, but nothing has run against Meta's live API.
+
 ## 8. A Sentry (or GlitchTip) account (optional but recommended)
 
 **What:** An error-tracking project.

@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/staff/', connections.staff_api),
     path('api/staff/<int:membership_id>/role/', connections.update_staff_role),
     path('api/staff/<int:membership_id>/remove/', connections.remove_staff),
+    path('webhooks/meta/', connections.meta_webhook),
     path('webhooks/<str:provider>/<uuid:webhook_id>/', connections.webhook),
     path('api/conversations/<int:contact_id>/<str:action>/', views.conversation_action),
 ]

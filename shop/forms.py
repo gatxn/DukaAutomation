@@ -1,7 +1,7 @@
 import re
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, SetPasswordForm
-from .models import Product, Shop, OTP_CHANNEL_CHOICES, OTP_CHANNEL_EMAIL, OTP_CHANNEL_WHATSAPP
+from .models import Product, Shop, OTP_CHANNEL_CHOICES, OTP_CHANNEL_EMAIL, OTP_PHONE_CHANNELS
 import io
 import uuid
 import warnings
@@ -14,7 +14,7 @@ class SignupForm(UserCreationForm):
     channel = forms.ChoiceField(choices=OTP_CHANNEL_CHOICES, widget=forms.RadioSelect, initial=OTP_CHANNEL_EMAIL,
         help_text='Where should we send your verification code?')
     email = forms.EmailField(required=False, help_text='Required if you choose email verification.')
-    phone = forms.CharField(required=False, help_text='Required if you choose WhatsApp verification, e.g. +255712345678.')
+    phone = forms.CharField(required=False, help_text='Required if you choose WhatsApp or SMS verification, e.g. +255712345678.')
     class Meta(UserCreationForm.Meta):
         fields = ('username', 'email', 'phone', 'channel')
 
@@ -29,8 +29,8 @@ class SignupForm(UserCreationForm):
         channel = cleaned.get('channel')
         if channel == OTP_CHANNEL_EMAIL and not cleaned.get('email'):
             self.add_error('email', 'Enter an email address to receive your code there.')
-        if channel == OTP_CHANNEL_WHATSAPP and not cleaned.get('phone'):
-            self.add_error('phone', 'Enter a phone number to receive your code on WhatsApp.')
+        if channel in OTP_PHONE_CHANNELS and not cleaned.get('phone'):
+            self.add_error('phone', 'Enter a phone number to receive your code by WhatsApp or SMS.')
         return cleaned
 
 class OtpVerifyForm(forms.Form):

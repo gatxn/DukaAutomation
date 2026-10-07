@@ -1,6 +1,6 @@
 """Provider contracts. No keys or raw provider errors are logged or returned."""
 import json
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 from django.conf import settings
@@ -13,11 +13,12 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
-def _request(provider, url, headers, payload):
+def _request(provider, url, headers, payload, form=False):
     # Cloudflare-fronted APIs (Resend) 403 with error 1010 on urllib's default User-Agent
     # before the credential is even checked, which looks like a bad key but isn't.
     headers = {'User-Agent':'duka/1.0 (+https://dukanibot.com)', **headers}
-    req = Request(url, data=json.dumps(payload).encode() if payload is not None else None, headers=headers)
+    body = None if payload is None else (urlencode(payload) if form else json.dumps(payload)).encode()
+    req = Request(url, data=body, headers=headers)
     try:
         with build_opener(NoRedirect()).open(req, timeout=25) as response:
             result = json.loads(response.read(2*1024*1024))
@@ -89,8 +90,27 @@ def _ghala_whatsapp_otp(phone, code):
         'components':[{'type':'body','parameters':[{'type':'text','text':code}]}]}
     call('Ghala', f'/api/v1/inbox/contacts/{contact_id}/messages/template', settings.GHALA_API_KEY, payload, raw=True)
 
+def sms_otp(phone, code):
+    """Africa's Talking SMS. Username 'sandbox' uses their sandbox host (simulator only, no real
+    delivery). AFRICASTALKING_SENDER_ID is optional: Tanzania usually needs a registered sender
+    ID for branded messages, but an unset one falls back to the provider's shared sender."""
+    if not (settings.AFRICASTALKING_USERNAME and settings.AFRICASTALKING_API_KEY):
+        raise ProviderError('SMS delivery is not configured yet.')
+    host = 'api.sandbox.africastalking.com' if settings.AFRICASTALKING_USERNAME == 'sandbox' else 'api.africastalking.com'
+    minutes = settings.OTP_TTL_SECONDS // 60
+    payload = {'username':settings.AFRICASTALKING_USERNAME, 'to':phone,
+        'message':f'Your Duka verification code is {code}. It expires in {minutes} minutes.'}
+    if settings.AFRICASTALKING_SENDER_ID:
+        payload['from'] = settings.AFRICASTALKING_SENDER_ID
+    headers = {'apiKey':settings.AFRICASTALKING_API_KEY, 'Accept':'application/json', 'Content-Type':'application/x-www-form-urlencoded'}
+    result = _request("Africa's Talking", f'https://{host}/version1/messaging', headers, payload, form=True)
+    recipients = (result.get('SMSMessageData') or {}).get('Recipients') or []
+    # 100 Processed, 101 Sent, 102 Queued are the provider's success codes.
+    if not recipients or recipients[0].get('statusCode') not in (100, 101, 102):
+        raise ProviderError('The SMS was not accepted by the provider. Check the number and try again.')
+
 def send_otp(channel, destination, code):
-    (email_otp if channel == 'email' else whatsapp_otp)(destination, code)
+    {'email':email_otp, 'whatsapp':whatsapp_otp, 'sms':sms_otp}[channel](destination, code)
 
 def sales_reply(connection, history):
     shop = connection.shop

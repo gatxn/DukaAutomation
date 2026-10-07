@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import re
 import time
 import uuid
 from urllib.parse import urlsplit
@@ -11,7 +12,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -23,8 +24,9 @@ from .secrets import seal, reveal
 from .permissions import shop_for_user
 from .audit import log_action
 from .providers import call, sales_reply, ProviderError
+from . import inline
 
-SECRET_FIELDS = ('ghala_token','ghala_secret','snippe_token','snippe_secret','openai_key')
+SECRET_FIELDS = ('ghala_token','ghala_secret','snippe_token','snippe_secret','openai_key','meta_token')
 MAP_FIELDS = ('phone','text','message_id','timestamp','name')
 
 def connection_for(user, min_role=ROLE_AGENT):
@@ -46,7 +48,7 @@ def public_url(value):
 
 def status(c):
     jobs = list(Job.objects.filter(shop=c.shop).order_by('-id').values('id','kind','status','attempts','error','created_at')[:15])
-    return {'public_url':c.public_url,'configured':{key:bool(getattr(c,key)) for key in SECRET_FIELDS},'ghala_map':c.ghala_map,'mapping_confirmed':c.mapping_confirmed,'ghala_subscription':c.ghala_subscription,'agent_name':c.agent_name,'agent_policies':c.agent_policies,'agent_enabled':c.agent_enabled,'ghala_auto_reply_disabled':c.ghala_auto_reply_disabled,'model':c.model,'worker_active':bool(c.worker_heartbeat and (timezone.now()-c.worker_heartbeat).total_seconds()<90),'jobs':jobs,'webhooks':{provider:f'{c.public_url}/webhooks/{provider}/{c.webhook_id}/' for provider in ('ghala','snippe')}}
+    return {'public_url':c.public_url,'configured':{key:bool(getattr(c,key)) for key in SECRET_FIELDS},'ghala_map':c.ghala_map,'mapping_confirmed':c.mapping_confirmed,'ghala_subscription':c.ghala_subscription,'meta_phone_number_id':c.meta_phone_number_id,'meta_webhook':f'{c.public_url}/webhooks/meta/' if c.public_url else '','agent_name':c.agent_name,'agent_policies':c.agent_policies,'agent_enabled':c.agent_enabled,'ghala_auto_reply_disabled':c.ghala_auto_reply_disabled,'model':c.model,'worker_active':bool(c.worker_heartbeat and (timezone.now()-c.worker_heartbeat).total_seconds()<90),'jobs':jobs,'webhooks':{provider:f'{c.public_url}/webhooks/{provider}/{c.webhook_id}/' for provider in ('ghala','snippe')}}
 
 @require_http_methods(['GET','POST'])
 @api
@@ -70,6 +72,11 @@ def settings_api(request):
                 if not isinstance(value,str) or len(value)>(80 if key=='agent_name' else 6000):
                     raise ValidationError('Assistant name or instructions are too long.')
                 setattr(c,key,value)
+        if 'meta_phone_number_id' in data:
+            number_id = data['meta_phone_number_id']
+            if not isinstance(number_id,str) or (number_id.strip() and not re.fullmatch(r'\d{5,40}',number_id.strip())):
+                raise ValidationError('The WhatsApp phone number ID is a number, shown in Meta under WhatsApp → API setup.')
+            c.meta_phone_number_id = number_id.strip()
         if 'public_url' in data:
             c.public_url = public_url(data['public_url']) if data['public_url'] else ''
         for key in ('agent_enabled','mapping_confirmed','ghala_auto_reply_disabled'):
@@ -84,8 +91,16 @@ def settings_api(request):
             c.ghala_map = mapping
         if c.mapping_confirmed and any(not c.ghala_map.get(k) for k in ('phone','text','message_id','timestamp')):
             raise ValidationError('Set phone, text, message ID and timestamp field paths before confirming the mapping.')
-        if c.agent_enabled and not (c.openai_key and c.ghala_token and c.ghala_secret and c.mapping_confirmed and c.ghala_auto_reply_disabled and c.public_url):
-            raise ValidationError('To enable live replies, add Ghala and AI credentials, a public URL, verified field mapping, and confirm that Ghala native auto-replies are disabled.')
+        if c.agent_enabled and not (c.openai_key and (c.uses_meta or (c.ghala_token and c.ghala_secret and c.mapping_confirmed and c.ghala_auto_reply_disabled and c.public_url))):
+            raise ValidationError('To enable live replies, add your AI key and connect WhatsApp: either the Meta number ID and token, or Ghala credentials, a public URL, verified field mapping, and Ghala native auto-replies turned off.')
+        if c.uses_meta and ({'meta_token','meta_phone_number_id'} & set(data)):
+            # Proves the token really controls this number before inbound messages are routed to this shop.
+            if Connection.objects.filter(meta_phone_number_id=c.meta_phone_number_id).exclude(pk=c.pk).exists():
+                raise ValidationError('That WhatsApp number is already connected to another shop.')
+            try:
+                call('Meta',f'/{settings.WHATSAPP_GRAPH_VERSION}/{c.meta_phone_number_id}?fields=display_phone_number',c.meta_token)
+            except ProviderError as exc:
+                raise ValidationError(f'Could not confirm this WhatsApp number with Meta. {exc}') from None
         c.save()
     except (ValidationError,ValueError) as exc:
         return JsonResponse({'error':' '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc)},status=400)
@@ -185,8 +200,8 @@ def send_message(request,contact_id):
     body = request.payload.get('text','')
     if not isinstance(body,str) or not 1<=len(body.strip())<=4000:
         return JsonResponse({'error':'Write a message of up to 4,000 characters.'},status=400)
-    if not c.ghala_token:
-        return JsonResponse({'error':'Add your Ghala token in Settings.'},status=400)
+    if not (c.ghala_token or c.uses_meta):
+        return JsonResponse({'error':'Connect WhatsApp in Settings first.'},status=400)
     # Manual replies pause the assistant before the message is queued.
     Conversation.objects.filter(id=conversation.id).update(human=True,quote={})
     payload = {'conversation_id':conversation.id,'text':body.strip(),'manual':True}
@@ -334,4 +349,53 @@ def webhook(request,provider,webhook_id):
         event,created = WebhookEvent.objects.get_or_create(shop=c.shop,provider=provider,delivery_id=delivery_id,defaults={'event_type':event_type,'payload':payload})
         if created:
             enqueue(c.shop,'webhook',f'event-{event.id}',{'event_id':event.id})
+    return JsonResponse({'received':True})
+
+@csrf_exempt
+@require_http_methods(['GET','POST'])
+def meta_webhook(request):
+    """One webhook for the whole platform, as Meta allows a single callback URL per app. Messages are
+    routed to a shop by the receiving number's ID. Verified with the app secret (X-Hub-Signature-256)."""
+    if request.method=='GET':
+        token = settings.META_WEBHOOK_VERIFY_TOKEN
+        if token and request.GET.get('hub.mode')=='subscribe' and hmac.compare_digest(request.GET.get('hub.verify_token',''),token):
+            return HttpResponse(request.GET.get('hub.challenge',''),content_type='text/plain')
+        return HttpResponse(status=403)
+    secret = settings.META_APP_SECRET
+    if not secret:
+        return JsonResponse({'error':'Webhook is not configured.'},status=503)
+    raw = request.body
+    if len(raw)>1024*1024:
+        return JsonResponse({'error':'Payload too large.'},status=413)
+    expected = 'sha256='+hmac.new(secret.encode(),raw,hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected,request.headers.get('X-Hub-Signature-256','')):
+        return JsonResponse({'error':'Invalid signed event.'},status=401)
+    try:
+        payload = json.loads(raw)
+        if not isinstance(payload,dict) or payload.get('object')!='whatsapp_business_account':
+            raise ValueError()
+    except (ValueError,UnicodeDecodeError):
+        return JsonResponse({'error':'Invalid event.'},status=400)
+    queued = False
+    for entry in payload.get('entry') or []:
+        for change in (entry.get('changes') or []) if isinstance(entry,dict) else []:
+            value = change.get('value') if isinstance(change,dict) else None
+            if not isinstance(value,dict) or change.get('field')!='messages':
+                continue
+            number_id = (value.get('metadata') or {}).get('phone_number_id')
+            c = Connection.objects.select_related('shop').filter(meta_phone_number_id=number_id).first() if isinstance(number_id,str) and number_id else None
+            if not c:
+                continue # Unknown number: acknowledge so Meta doesn't keep retrying, but store nothing.
+            names = {k.get('wa_id'):(k.get('profile') or {}).get('name') for k in value.get('contacts') or [] if isinstance(k,dict)}
+            for message in value.get('messages') or []:
+                delivery_id = message.get('id') if isinstance(message,dict) else None
+                if not isinstance(delivery_id,str) or not 1<=len(delivery_id)<=255:
+                    continue
+                with transaction.atomic():
+                    event,created = WebhookEvent.objects.get_or_create(shop=c.shop,provider='meta',delivery_id=delivery_id,defaults={'event_type':'message.received','payload':{'message':message,'name':names.get(message.get('from'))}})
+                    if created:
+                        enqueue(c.shop,'webhook',f'event-{event.id}',{'event_id':event.id})
+                        queued = True
+    if queued:
+        inline.kick()
     return JsonResponse({'received':True})

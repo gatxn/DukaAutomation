@@ -9,8 +9,7 @@ from django.core.management.base import BaseCommand
 from django.db import connection as db_connection, transaction
 from django.utils import timezone
 from shop.models import Job, Connection
-from shop.workflow import process, expire_reservations
-from shop.providers import ProviderError
+from shop.workflow import run_job, expire_reservations
 
 def claim_job(now):
     """Returns a claimed (status='running') Job, or None if nothing is available."""
@@ -52,13 +51,8 @@ class Command(BaseCommand):
                         break
                     time.sleep(1)
                     continue
-                try:
-                    process(job)
-                    Job.objects.filter(id=job.id).update(status='done',error='',locked_at=None)
-                except Exception as exc:
-                    # Never log raw provider payloads, customer messages, or secrets.
-                    error=str(exc) if isinstance(exc,ProviderError) else 'Processing failed. Check configuration and retry. Technical error type: '+type(exc).__name__
-                    Job.objects.filter(id=job.id).update(status='failed',error=error[:500],locked_at=None)
-                    self.stderr.write(f'Job {job.id}: {error[:500]}')
+                error=run_job(job)
+                if error:
+                    self.stderr.write(f'Job {job.id}: {error}')
         except KeyboardInterrupt:
             self.stdout.write('Worker stopped.')
