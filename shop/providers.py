@@ -33,7 +33,7 @@ def _request(provider, url, headers, payload):
 def call(provider, path, token, payload=None, key=None, raw=False):
     """raw=True skips the per-shop Fernet reveal() step, for platform-level credentials
     (settings.py env vars, e.g. RESEND_API_KEY) that were never sealed in the first place."""
-    bases = {'Ghala':'https://v2.ghala.io','Snippe':'https://api.snippe.sh','OpenAI':'https://api.openai.com','Resend':'https://api.resend.com'}
+    bases = {'Ghala':'https://v2.ghala.io','Snippe':'https://api.snippe.sh','OpenAI':'https://api.openai.com','Resend':'https://api.resend.com','Meta':'https://graph.facebook.com'}
     if not token:
         raise ProviderError(f'Add your {provider} credential in Settings first.')
     secret = token if raw else reveal(token)
@@ -51,11 +51,30 @@ def email_otp(destination, code):
     call('Resend','/emails',settings.RESEND_API_KEY,payload,raw=True)
 
 def whatsapp_otp(phone, code):
+    """Meta's WhatsApp Cloud API when WHATSAPP_CLOUD_TOKEN is set (no middleman fee), otherwise
+    the platform's Ghala team. Both need a pre-approved Authentication template, because
+    WhatsApp rejects free text to someone who hasn't messaged the business first."""
+    if settings.WHATSAPP_CLOUD_TOKEN:
+        return _cloud_whatsapp_otp(phone, code)
+    return _ghala_whatsapp_otp(phone, code)
+
+def _cloud_whatsapp_otp(phone, code):
+    if not (settings.WHATSAPP_PHONE_NUMBER_ID and settings.WHATSAPP_OTP_TEMPLATE_NAME):
+        raise ProviderError('WhatsApp delivery is not configured yet.')
+    # Authentication templates carry the code twice: in the body and in the OTP (copy-code) button.
+    payload = {'messaging_product':'whatsapp','recipient_type':'individual','to':phone.lstrip('+'),'type':'template',
+        'template':{'name':settings.WHATSAPP_OTP_TEMPLATE_NAME,'language':{'code':settings.WHATSAPP_OTP_TEMPLATE_LANGUAGE},
+            'components':[{'type':'body','parameters':[{'type':'text','text':code}]},
+                {'type':'button','sub_type':'url','index':'0','parameters':[{'type':'text','text':code}]}]}}
+    path = f'/{settings.WHATSAPP_GRAPH_VERSION}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages'
+    result = call('Meta', path, settings.WHATSAPP_CLOUD_TOKEN, payload, raw=True)
+    if not result.get('messages'):
+        raise ProviderError('WhatsApp did not confirm the message was accepted.')
+
+def _ghala_whatsapp_otp(phone, code):
     """Uses the platform's own Ghala team (GHALA_API_KEY, a team-level key from Ghala's
     Settings -> Developer -> API Keys), not any merchant's per-shop Connection.ghala_token —
-    a brand-new signup has no shop yet to hold one. Requires a WhatsApp number connected to that
-    team and an approved "Authentication" template (GHALA_OTP_TEMPLATE_NAME); free-text messages
-    to someone who hasn't messaged first are rejected by WhatsApp/Meta regardless of provider."""
+    a brand-new signup has no shop yet to hold one."""
     if not (settings.GHALA_API_KEY and settings.GHALA_OTP_TEMPLATE_NAME):
         raise ProviderError('WhatsApp delivery is not configured yet.')
     found = call('Ghala', f'/api/v1/inbox/contacts?q={quote(phone)}&limit=1', settings.GHALA_API_KEY, raw=True)

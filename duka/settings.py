@@ -86,6 +86,13 @@ AI_MODEL = os.getenv('AI_MODEL', 'gpt-4.1-mini')
 # no-op — see OWNER_ACTION_REQUIRED.md for account setup.
 RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
 RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'Duka <no-reply@duka.example.com>')
+# Meta's WhatsApp Cloud API, used for OTP in preference to Ghala whenever WHATSAPP_CLOUD_TOKEN is set.
+# Token: a permanent System User access token with whatsapp_business_messaging permission.
+WHATSAPP_CLOUD_TOKEN = os.getenv('WHATSAPP_CLOUD_TOKEN', '')
+WHATSAPP_PHONE_NUMBER_ID = os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')
+WHATSAPP_OTP_TEMPLATE_NAME = os.getenv('WHATSAPP_OTP_TEMPLATE_NAME', '')
+WHATSAPP_OTP_TEMPLATE_LANGUAGE = os.getenv('WHATSAPP_OTP_TEMPLATE_LANGUAGE', 'en')
+WHATSAPP_GRAPH_VERSION = os.getenv('WHATSAPP_GRAPH_VERSION', 'v24.0')
 GHALA_API_KEY = os.getenv('GHALA_API_KEY', '')
 GHALA_OTP_TEMPLATE_NAME = os.getenv('GHALA_OTP_TEMPLATE_NAME', '')
 GHALA_OTP_TEMPLATE_LANGUAGE = os.getenv('GHALA_OTP_TEMPLATE_LANGUAGE', 'en')

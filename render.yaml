@@ -38,6 +38,15 @@ services:
         sync: false
       - key: RESEND_FROM_EMAIL
         value: "Duka <no-reply@mail.dukanibot.com>"
+      # Meta WhatsApp Cloud API for OTP (used instead of Ghala whenever the token is set).
+      - key: WHATSAPP_CLOUD_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_OTP_TEMPLATE_NAME
+        sync: false
+      - key: WHATSAPP_OTP_TEMPLATE_LANGUAGE
+        value: "en"
       # A Ghala team API key the platform itself owns (Settings → Developer → API Keys) — not
       # any merchant's per-shop Connection.ghala_token — plus the name/language of its
       # Meta-approved authentication template (see OWNER_ACTION_REQUIRED.md item 7b).

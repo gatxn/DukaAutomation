@@ -107,6 +107,26 @@ sender only delivers to your own verified test addresses.
 **Environment:** Staging/production.
 **Env vars:** `RESEND_API_KEY`, `RESEND_FROM_EMAIL`.
 
+## 7a. (Cheapest option) Meta WhatsApp Cloud API directly, for WhatsApp OTP
+
+**What:** Skip the middleman: register a number directly with Meta and send OTPs through the
+Cloud API, paying only Meta's per-message fee (about $0.004 per OTP in Tanzania) with no
+provider markup. The code already supports it (`shop/providers.py: _cloud_whatsapp_otp`) and
+prefers it over Ghala whenever `WHATSAPP_CLOUD_TOKEN` is set.
+**Steps (all yours, in Meta's dashboards):**
+1. developers.facebook.com → create an app (type "Business"), add the **WhatsApp** product.
+2. In WhatsApp Manager, add a **fresh** phone number (not active on any WhatsApp account) and
+   verify it by SMS/voice. Copy its **Phone number ID**.
+3. Create an **Authentication** message template with a copy-code button, and wait for approval.
+4. Business Settings → Users → **System users** → create one, assign the WhatsApp account, and
+   generate a **permanent token** with the `whatsapp_business_messaging` permission.
+**Env vars (set in Render yourself, never in chat):** `WHATSAPP_CLOUD_TOKEN`,
+`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_OTP_TEMPLATE_NAME`, and `WHATSAPP_OTP_TEMPLATE_LANGUAGE`
+(defaults to `en`; use the exact code the template was approved in, e.g. `en_US`).
+**Not yet verified:** the template send format follows Meta's documented authentication-template
+structure and is covered by unit tests, but has not been exercised against Meta's live API, since
+that needs your credentials. Test with your own number first.
+
 ## 7b. A platform-level Ghala team + an approved WhatsApp template (WhatsApp OTP)
 
 **What:** A **separate Ghala team you (the platform operator) own** — not any individual

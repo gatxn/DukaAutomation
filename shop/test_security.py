@@ -142,6 +142,35 @@ class SignupEmailTests(TestCase):
         self.assertContains(verify, 'just taken')
         self.assertEqual(User.objects.filter(username='racedmerchant').count(), 1)  # only the racer's row
 
+@override_settings(WHATSAPP_CLOUD_TOKEN='cloud-token', WHATSAPP_PHONE_NUMBER_ID='123456789', WHATSAPP_OTP_TEMPLATE_NAME='duka_otp',
+    WHATSAPP_OTP_TEMPLATE_LANGUAGE='en', WHATSAPP_GRAPH_VERSION='v24.0', GHALA_API_KEY='team-key', GHALA_OTP_TEMPLATE_NAME='ghala_tpl')
+class CloudWhatsappOtpTests(TestCase):
+    def test_sends_an_authentication_template_via_the_graph_api_and_skips_ghala(self):
+        from shop.providers import whatsapp_otp
+        with patch('shop.providers._request', return_value={'messages': [{'id': 'wamid.1'}]}) as mock_request:
+            whatsapp_otp('+255712345678', '123456')
+        self.assertEqual(mock_request.call_count, 1)  # no Ghala contact lookup
+        provider, url, headers, payload = mock_request.call_args.args
+        self.assertEqual(url, 'https://graph.facebook.com/v24.0/123456789/messages')
+        self.assertEqual(headers['Authorization'], 'Bearer cloud-token')
+        self.assertEqual(payload['to'], '255712345678')  # digits only, no '+'
+        self.assertEqual(payload['template']['name'], 'duka_otp')
+        body, button = payload['template']['components']
+        self.assertEqual(body['parameters'][0]['text'], '123456')
+        self.assertEqual((button['sub_type'], button['index'], button['parameters'][0]['text']), ('url', '0', '123456'))
+
+    def test_unconfirmed_send_raises_a_clean_error(self):
+        from shop.providers import whatsapp_otp, ProviderError
+        with patch('shop.providers._request', return_value={}):
+            with self.assertRaises(ProviderError):
+                whatsapp_otp('+255712345678', '123456')
+
+    @override_settings(WHATSAPP_PHONE_NUMBER_ID='')
+    def test_partial_cloud_config_is_a_clean_not_configured_error(self):
+        from shop.providers import whatsapp_otp, ProviderError
+        with self.assertRaisesMessage(ProviderError, 'not configured'):
+            whatsapp_otp('+255712345678', '123456')
+
 class ProviderUserAgentTests(TestCase):
     def test_outbound_requests_never_use_urllibs_default_user_agent(self):
         from shop.providers import _request
