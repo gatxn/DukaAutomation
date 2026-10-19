@@ -87,7 +87,10 @@ def _ghala_whatsapp_otp(phone, code):
     if not contact_id:
         raise ProviderError('Ghala did not return a contact ID.')
     payload = {'template_name':settings.GHALA_OTP_TEMPLATE_NAME, 'language':settings.GHALA_OTP_TEMPLATE_LANGUAGE,
-        'components':[{'type':'body','parameters':[{'type':'text','text':code}]}]}
+        # Authentication templates carry the code twice (body and the copy-code button); Meta rejects
+        # a send that omits the button parameter.
+        'components':[{'type':'body','parameters':[{'type':'text','text':code}]},
+            {'type':'button','sub_type':'url','index':'0','parameters':[{'type':'text','text':code}]}]}
     call('Ghala', f'/api/v1/inbox/contacts/{contact_id}/messages/template', settings.GHALA_API_KEY, payload, raw=True)
 
 def sms_otp(phone, code):

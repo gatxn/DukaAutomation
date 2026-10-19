@@ -198,6 +198,9 @@ class GhalaWhatsappOtpTests(TestCase):
         self.assertEqual(mock_request.call_count, 2)
         send_url = mock_request.call_args_list[1].args[1]
         self.assertIn('/inbox/contacts/contact-1/messages/template', send_url)
+        body, button = mock_request.call_args_list[1].args[3]['components']
+        self.assertEqual(body['parameters'][0]['text'], '123456')
+        self.assertEqual((button['type'], button['sub_type'], button['parameters'][0]['text']), ('button', 'url', '123456'))
 
     def test_creates_a_contact_when_none_exists(self):
         from shop.providers import whatsapp_otp
