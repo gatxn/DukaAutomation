@@ -15,7 +15,7 @@ urlpatterns = [
     path('signup/verify/<str:token>/', views.signup_verify, name='signup_verify'),
     path('password-reset/', views.password_reset_request, name='password_reset'),
     path('password-reset/verify/<str:token>/', views.password_reset_verify, name='password_reset_verify'),
-    path('', views.workspace, name='workspace'),
+    path('', views.home, name='workspace'),
     path('api/state/', views.state),
     path('api/account/email/', views.account_email),
     path('api/products/', views.add_product),

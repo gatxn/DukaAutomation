@@ -218,6 +218,13 @@ def password_reset_verify(request, token):
 def workspace(request):
     return render(request,'workspace.html')
 
+def home(request):
+    """Signed-in users get the workspace; everyone else (including search and platform crawlers
+    that verify who operates the site) gets a public page naming the business."""
+    if request.user.is_authenticated:
+        return workspace(request)
+    return render(request,'landing.html')
+
 @require_GET
 def healthz(request):
     checks = {}

@@ -30,7 +30,13 @@ class WorkspaceTests(TestCase):
             self.assertEqual(self.post(f'/api/conversations/{foreign.id}/{action}/').status_code,404)
         self.client.logout()
         self.assertEqual(self.client.get('/api/state/').status_code,401)
-        self.assertEqual(self.client.get('/').status_code,302)
+        # The public home page names the operating business (platform verification crawls it
+        # unauthenticated) but never renders the private workspace.
+        home = self.client.get('/')
+        self.assertEqual(home.status_code,200)
+        self.assertContains(home,'OMNI-CRAFT TECHNOLOGIES')
+        self.assertTemplateUsed(home,'landing.html')
+        self.assertTemplateNotUsed(home,'workspace.html')
 
     def test_product_persists_and_validates(self):
         with tempfile.TemporaryDirectory() as folder, override_settings(MEDIA_ROOT=folder):

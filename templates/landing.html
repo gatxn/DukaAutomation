@@ -1,0 +1,73 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="facebook-domain-verification" content="6yo5t019t99bzy66238yc5fktx5wap">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Duka (Dukani) by OMNI-CRAFT TECHNOLOGIES</title>
+<meta name="description" content="Duka (Dukani) is a sales workspace for Tanzanian shops, operated by OMNI-CRAFT TECHNOLOGIES, Dodoma, Tanzania.">
+<link rel="icon" href="{% static 'favicon.svg' %}">
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#5d5d58;--line:#e4e1d9;--accent:#0f6b4a;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#141412;--fg:#f1efe9;--muted:#a9a69d;--line:#2c2b27;--accent:#4cc795;--card:#1c1c19}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line)}
+header .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:1.25rem;color:var(--fg);text-decoration:none}
+.brand span{color:var(--accent)}
+nav a{margin-left:12px;color:var(--fg);text-decoration:none;font-weight:600}
+nav a.primary{background:var(--accent);color:#fff;padding:8px 16px;border-radius:8px}
+@media (prefers-color-scheme:dark){nav a.primary{color:#0b1f17}}
+h1{font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.15;margin:48px 0 12px}
+h2{font-size:1.25rem;margin:0 0 8px}
+.lead{color:var(--muted);font-size:1.1rem;max-width:60ch}
+section{margin:40px 0}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px}
+.card p{margin:0;color:var(--muted)}
+address{font-style:normal}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:24px 0;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/">duka<span>.</span></a>
+    <nav aria-label="Account">
+      <a href="{% url 'login' %}">Sign in</a>
+      <a class="primary" href="{% url 'signup' %}">Create account</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <h1>Good conversations.<br>Great business.</h1>
+  <p class="lead">Duka (Dukani) is a simple workspace for shops in Tanzania. Keep your products, your customer conversations on WhatsApp and your orders in one place, in Swahili and English.</p>
+
+  <section aria-labelledby="what">
+    <h2 id="what">What Duka does</h2>
+    <div class="grid">
+      <div class="card"><h2>Products</h2><p>List what you sell with prices in TZS, photos and stock.</p></div>
+      <div class="card"><h2>Conversations</h2><p>Answer customers on WhatsApp, with an assistant that uses only your own catalogue.</p></div>
+      <div class="card"><h2>Orders</h2><p>Turn a chat into an order, confirm delivery details and track payment.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="about">
+    <h2 id="about">About the business</h2>
+    <p>Duka (Dukani) is owned and operated by <strong>OMNI-CRAFT TECHNOLOGIES</strong>, a registered business in Tanzania.</p>
+    <address>
+      <strong>OMNI-CRAFT TECHNOLOGIES</strong><br>
+      Uhuru, Dodoma, Tanzania<br>
+      Phone: <a href="tel:+255768188065">+255 768 188 065</a><br>
+      WhatsApp: <a href="tel:+255615445570">+255 615 445 570</a><br>
+      Website: <a href="https://dukanibot.com/">dukanibot.com</a>
+    </address>
+  </section>
+</main>
+<footer>
+  <div class="wrap">&copy; OMNI-CRAFT TECHNOLOGIES. All rights reserved. Duka (Dukani) is operated by OMNI-CRAFT TECHNOLOGIES, Uhuru, Dodoma, Tanzania.</div>
+</footer>
+</body>
+</html>
