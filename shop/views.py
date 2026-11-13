@@ -15,7 +15,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_safe
 from .forms import ProductForm, ShopForm, SignupForm, OtpVerifyForm, OtpSetPasswordForm
 from .models import (Shop, Product, Conversation, Message, Order, Connection, Membership, UserProfile, OtpCode,
     ROLE_OWNER, ROLE_MANAGER, ROLE_AGENT, OTP_PURPOSE_SIGNUP, OTP_PURPOSE_RESET, OTP_CHANNEL_EMAIL, OTP_PHONE_CHANNELS, OTP_CHANNEL_CHOICES)
@@ -225,7 +225,7 @@ def home(request):
         return workspace(request)
     return render(request,'landing.html')
 
-@require_GET
+@require_safe
 def healthz(request):
     checks = {}
     try:

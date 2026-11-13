@@ -30,6 +30,11 @@ class HealthzTests(TestCase):
         response = self.client.get('/healthz/')
         self.assertNotEqual(response.status_code, 302)
 
+    def test_healthz_answers_head_for_uptime_monitors(self):
+        # UptimeRobot's free plan probes with HEAD; a 405 there reads as "site down".
+        self.assertEqual(self.client.head('/healthz/').status_code, 200)
+        self.assertEqual(self.client.post('/healthz/').status_code, 405)
+
 class ErrorEnvelopeTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user('envelope-owner', password='Not-a-real-password-962!')
